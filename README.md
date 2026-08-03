@@ -50,6 +50,13 @@ Open <http://localhost:4173>.
 
 Useful environment variables are documented in `.env.example`, including `PORT`, `COPILOT_MODEL`, `COPILOT_CLI_PATH`, and `KNOWLEDGE_DIR`.
 
+## Configuration
+
+Role-specific fallback parsing rules are stored in `config/fallback-rules.md`.
+When the model cannot parse a listing, the app reads the supported role titles
+and fallback keyword vocabulary from that file. Add or remove terms there
+without editing `src/analysis.ts`.
+
 ## Output
 
 Generated files are written to `applications/`, which is also excluded from Git:

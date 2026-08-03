@@ -1,4 +1,8 @@
 import type { CopilotManager } from "./copilot.js";
+import {
+  FALLBACK_KEYWORDS,
+  FALLBACK_ROLE_PATTERN,
+} from "./fallback-config.js";
 import { analyzeListingPrompt, matchPrompt, analysisSystemMessage } from "./prompts.js";
 import type { AnalysisResult, JobInfo, JobRequirement, MatchAssessment } from "./types.js";
 
@@ -15,45 +19,8 @@ export function extractJson<T>(text: string): T {
   return JSON.parse(s.slice(start, end + 1)) as T;
 }
 
-/** Basic skill vocabulary used as a fallback when the model call fails. */
-const FALLBACK_KEYWORDS = [
-  "Azure",
-  "Microsoft Teams",
-  "Direct Routing",
-  "SIP",
-  "PSTN",
-  "SBC",
-  "Azure DevOps",
-  "CI/CD",
-  "Terraform",
-  "Kubernetes",
-  "Docker",
-  "Entra",
-  "Active Directory",
-  "Exchange",
-  "PowerShell",
-  "Python",
-  "TypeScript",
-  "JavaScript",
-  "Node.js",
-  "API",
-  "Microservices",
-  "Cloud",
-  "Architecture",
-  "Security",
-  "Networking",
-  "Monitoring",
-  "Observability",
-  "SQL",
-  "Cosmos DB",
-  "Machine Learning",
-  "AI",
-  "Pre-sales",
-  "Stakeholder",
-];
-
 function fallbackParse(listing: string): JobInfo {
-  const roleMatch = listing.match(/\b(Solution Architect|Cloud Architect|Enterprise Architect|IT Specialist|Technical Account Manager|Pre-Sales Architect)\b/i);
+  const roleMatch = listing.match(FALLBACK_ROLE_PATTERN);
   const companyMatch = listing.match(/\b(?:at|by|with)\s+([A-Z][A-Za-z0-9&. ]{2,40})\b/i);
   const requirements: JobRequirement[] = [];
   for (const kw of FALLBACK_KEYWORDS) {
