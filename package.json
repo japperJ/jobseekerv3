@@ -1,0 +1,31 @@
+{
+  "name": "jobseeker-v2",
+  "version": "0.1.0",
+  "description": "Local web chat job application assistant — analyzes job listings, interviews skill gaps, and generates ATS-safe CV + Cover Letter PDFs (Danish + English).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^1.0.8",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "marked": "^17.0.5",
+    "playwright": "^1.58.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/marked": "^5.0.2",
+    "@types/node": "^22.13.14",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=22.3.0"
+  }
+}

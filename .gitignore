@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+applications/
+knowledge/
+.impeccable/
+.playwright-mcp/
+*.log

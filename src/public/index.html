@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jobseeker v2 — CV & Cover Letter Assistant</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">JS</div>
+        <div>
+          <h1>Jobseeker v2</h1>
+          <p class="tagline">Tailored CV & cover letters</p>
+        </div>
+      </div>
+
+      <div class="status-card">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Loading…</span>
+      </div>
+
+      <button class="btn btn-ghost" id="resetBtn">↺ New application</button>
+
+      <section class="panel">
+        <h2>Knowledge folder</h2>
+        <ul class="file-list" id="knowledgeList"><li class="muted">Loading…</li></ul>
+      </section>
+
+      <section class="panel grow">
+        <h2>Applications</h2>
+        <ul class="file-list" id="appList"><li class="muted">Loading…</li></ul>
+      </section>
+    </aside>
+
+    <!-- Chat -->
+    <main class="chat">
+      <header class="chat-header">
+        <span>Paste a job listing — get an ATS-safe CV & cover letter (DA + EN)</span>
+      </header>
+      <div class="messages" id="messages">
+        <div class="msg bot">
+          <div class="bubble">
+            👋 Hej! I'm your job application assistant.
+            <br /><br />
+            Paste a <strong>job listing</strong> or a <strong>link</strong> to one, and I'll analyze the
+            requirements against everything I know about you. I'll ask about any gaps,
+            save your answers permanently, and produce a <strong>CV + cover letter</strong> in
+            <strong>Danish and English</strong> — formatted so both human recruiters and AI
+            screeners pick it out.
+          </div>
+        </div>
+      </div>
+      <div class="composer">
+        <textarea id="input" rows="2" placeholder="Paste a job listing or URL…"></textarea>
+        <button class="btn btn-primary" id="sendBtn">Send</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
