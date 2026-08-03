@@ -57,6 +57,9 @@ When the model cannot parse a listing, the app reads the supported role titles
 and fallback keyword vocabulary from that file. Add or remove terms there
 without editing `src/analysis.ts`.
 
+Candidate-specific identity and experience belong in `knowledge/`, not in the
+TypeScript source. This keeps the application reusable for another candidate.
+
 ## Output
 
 Generated files are written to `applications/`, which is also excluded from Git:

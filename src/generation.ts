@@ -97,7 +97,7 @@ interface DocumentSections {
 
 /**
  * Splits the model's response into four documents by locating each document's
- * title heading (e.g. "## CV — Jan Petersen | ..." or "## Cover Letter — ...").
+ * title heading (e.g. "## CV - English" or "## Cover Letter - English").
  * Robust against the model using "---" as an internal horizontal rule inside
  * documents (which the old "---"-split broke on) and against language words
  * being absent from the heading (English and Danish CV headings are often
