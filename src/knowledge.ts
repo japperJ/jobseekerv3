@@ -61,7 +61,8 @@ export async function appendConfirmedSkill(
   const trimmed = skillText.trim();
   if (!trimmed) return { appended: false }; // nothing to append
   const needle = trimmed.toLowerCase();
-  if (needle.length > 3 && current.toLowerCase().includes(needle)) {
+  const escapedNeedle = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`(?:^|\\W)${escapedNeedle}(?=$|\\W)`, "i").test(current)) {
     return { appended: false }; // already known — skip
   }
 

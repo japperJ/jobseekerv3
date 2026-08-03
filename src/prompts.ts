@@ -95,9 +95,11 @@ For each requirement, decide whether the candidate's profile demonstrates it.
 Respond with a SINGLE valid JSON object (no markdown fences):
 {
   "assessments": [
-    { "index": 1, "verdict": "yes | partial | no", "reason": "short justification" }
+   { "index": 0, "verdict": "yes | partial | no", "reason": "short justification" }
   ]
-}`;
+}
+
+Use zero-based requirement indices exactly as listed above: the first requirement is index 0, the second is index 1, and so on.`;
 }
 
 /**

@@ -37,6 +37,40 @@ function fallbackParse(listing: string): JobInfo {
   };
 }
 
+const GENERIC_REQUIREMENT_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "context",
+  "experience",
+  "have",
+  "in",
+  "knowledge",
+  "of",
+  "or",
+  "professional",
+  "the",
+  "to",
+  "used",
+  "with",
+  "worked",
+]);
+
+function hasKnowledgeEvidence(requirement: string, knowledgeText: string): boolean {
+  const lowerRequirement = requirement.toLowerCase().trim();
+  const lowerKnowledge = knowledgeText.toLowerCase();
+  if (!lowerRequirement) return false;
+  if (lowerKnowledge.includes(lowerRequirement)) return true;
+
+  const meaningfulTerms = (requirement.match(/[A-Za-z][A-Za-z0-9+#./-]*/g) ?? [])
+    .filter((term) => !GENERIC_REQUIREMENT_WORDS.has(term.toLowerCase()))
+    .filter((term) => term.length >= 5 || /^[A-Z][A-Z0-9+#./-]*$/.test(term));
+
+  return meaningfulTerms.some((term) =>
+    new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(knowledgeText),
+  );
+}
+
 /**
  * Runs the full analysis: parse the listing into requirements, score the
  * candidate's knowledge against them, and return gaps + match score.
@@ -95,6 +129,19 @@ export async function analyzeJobListing(
       return { index, verdict, reason: `matched ${hit}/${words.length} keywords` };
     });
   }
+
+  // Do not ask about a requirement that is already explicitly documented.
+  assessments = job.requirements.map((requirement, index) => {
+    const existing = assessments.find((assessment) => assessment.index === index);
+    if (hasKnowledgeEvidence(requirement.text, knowledgeText)) {
+      return {
+        index,
+        verdict: "yes" as const,
+        reason: "explicitly documented in the knowledge folder",
+      };
+    }
+    return existing ?? { index, verdict: "no" as const, reason: "no matching evidence" };
+  });
 
   const byIndex = new Map(assessments.map((a) => [a.index, a.verdict]));
   const covered: JobRequirement[] = [];
