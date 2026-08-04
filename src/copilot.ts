@@ -27,6 +27,7 @@ export class CopilotManager {
   private client: CopilotClient | null = null;
   private starting = false;
   private startPromise: Promise<CopilotClient> | null = null;
+  private selectedModel: string | null = null;
 
   private async getClient(): Promise<CopilotClient> {
     if (this.client) return this.client;
@@ -61,7 +62,7 @@ export class CopilotManager {
   ): Promise<CopilotSession> {
     return client.createSession({
       onPermissionRequest: approveAll,
-      model: (opts.model ?? config.COPILOT_MODEL).toLowerCase(),
+      model: (opts.model ?? this.selectedModel ?? config.COPILOT_MODEL).toLowerCase(),
       clientName: "jobseeker-v2",
       workingDirectory: PROJECT_ROOT,
       systemMessage: opts.systemMessage,
@@ -126,6 +127,25 @@ export class CopilotManager {
       await this.client.stop().catch(() => {});
       this.client = null;
     }
+  }
+
+  async listModels(): Promise<string[]> {
+    const client = await this.getClient();
+    const models = await client.listModels();
+    return models
+      .map((model) => model.id.toLowerCase())
+      .filter((id, index, all) => all.indexOf(id) === index)
+      .sort();
+  }
+
+  getModel(): string {
+    return (this.selectedModel ?? config.COPILOT_MODEL).toLowerCase();
+  }
+
+  setModel(model: string): void {
+    const normalized = model.trim().toLowerCase();
+    if (!normalized) throw new Error("Model name cannot be empty");
+    this.selectedModel = normalized;
   }
 
   /** Checks whether the CLI is reachable. */

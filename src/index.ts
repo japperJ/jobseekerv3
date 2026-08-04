@@ -342,6 +342,36 @@ app.get("/api/health", async (_req, res) => {
   res.json({ ok: true, copilot: await manager.health() });
 });
 
+app.get("/api/models", async (_req, res) => {
+  try {
+    res.json({ models: await manager.listModels(), current: manager.getModel() });
+  } catch (err) {
+    console.error("❌ /api/models error:", err);
+    res.status(503).json({
+      error: `Unable to list Copilot models: ${err instanceof Error ? err.message : String(err)}`,
+      current: manager.getModel(),
+    });
+  }
+});
+
+app.post("/api/model", async (req, res) => {
+  const requested = String(req.body?.model ?? "").trim().toLowerCase();
+  if (!requested) return res.status(400).json({ error: "A model is required" });
+  try {
+    const models = await manager.listModels();
+    if (!models.includes(requested)) {
+      return res.status(400).json({ error: `Model is not available: ${requested}`, models });
+    }
+    manager.setModel(requested);
+    res.json({ current: manager.getModel() });
+  } catch (err) {
+    console.error("❌ /api/model error:", err);
+    res.status(503).json({
+      error: `Unable to change Copilot model: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+});
+
 app.post("/api/message", async (req, res) => {
   const clientId = String(req.body?.clientId ?? "default");
   const message = String(req.body?.message ?? "");

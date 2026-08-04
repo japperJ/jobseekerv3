@@ -70,6 +70,34 @@ body {
   font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
   color: var(--muted); margin: 0 0 8px;
 }
+.model-panel label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+.model-panel select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px 9px;
+  font: inherit;
+  font-size: 12px;
+}
+.model-panel select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.model-help {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
 .grow { flex: 1; }
 .file-list { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
 .file-list li { padding: 5px 0; border-bottom: 1px dashed var(--border); }

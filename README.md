@@ -50,6 +50,10 @@ Open <http://localhost:4173>.
 
 Useful environment variables are documented in `.env.example`, including `PORT`, `COPILOT_MODEL`, `COPILOT_CLI_PATH`, and `KNOWLEDGE_DIR`.
 
+The sidebar model selector lists the Copilot models available to the logged-in
+account. Changing it applies to the next analysis, interview, or document
+generation request; `COPILOT_MODEL` remains the startup default.
+
 ## Configuration
 
 Role-specific fallback parsing rules are stored in `config/fallback-rules.md`.

@@ -9,6 +9,7 @@
   const inputEl = document.getElementById("input");
   const sendBtn = document.getElementById("sendBtn");
   const resetBtn = document.getElementById("resetBtn");
+  const modelSelect = document.getElementById("modelSelect");
   const statusDot = document.getElementById("statusDot");
   const statusText = document.getElementById("statusText");
   const knowledgeList = document.getElementById("knowledgeList");
@@ -224,6 +225,26 @@
     addBot("State cleared. Paste a new job listing to start over.");
   });
 
+  modelSelect.addEventListener("change", async () => {
+    const model = modelSelect.value;
+    modelSelect.disabled = true;
+    try {
+      const res = await fetch("/api/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not change model");
+      addBot(`Model changed to **${data.current}**. This will be used for the next request.`);
+    } catch (err) {
+      addBot(`⚠️ Could not change model: ${err.message}`);
+      loadModels();
+    } finally {
+      modelSelect.disabled = false;
+    }
+  });
+
   // ── Sidebar ─────────────────────────────────────────────
   async function loadKnowledge() {
     try {
@@ -250,6 +271,7 @@
         appList.innerHTML = "<li class='muted'>No applications yet</li>";
         return;
       }
+
       apps.slice(0, 12).forEach((a) => {
         const li = document.createElement("li");
         const d = new Date(a.date).toLocaleDateString();
@@ -261,10 +283,34 @@
     }
   }
 
+  async function loadModels() {
+    try {
+      const res = await fetch("/api/models");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "unavailable");
+      modelSelect.innerHTML = "";
+      (data.models || []).forEach((model) => {
+        const option = document.createElement("option");
+        option.value = model;
+        option.textContent = model;
+        option.selected = model === data.current;
+        modelSelect.appendChild(option);
+      });
+      modelSelect.disabled = (data.models || []).length === 0;
+      if ((data.models || []).length === 0) {
+        modelSelect.innerHTML = "<option>No models available</option>";
+      }
+    } catch {
+      modelSelect.innerHTML = "<option>Models unavailable</option>";
+      modelSelect.disabled = true;
+    }
+  }
+
   // ── Init ────────────────────────────────────────────────
   async function init() {
     loadKnowledge();
     loadApplications();
+    loadModels();
     try {
       const res = await fetch("/api/health");
       const data = await res.json();
