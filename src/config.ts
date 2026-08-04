@@ -10,7 +10,7 @@ export const PROJECT_ROOT = path.resolve(__dirname, "..");
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4173),
-  COPILOT_MODEL: z.string().min(1).default("claude-sonnet-4.6"),
+  COPILOT_MODEL: z.string().min(1).default("gpt-5.6-luna"),
   COPILOT_CLI_PATH: z.string().optional(),
   KNOWLEDGE_DIR: z.string().default(path.join(PROJECT_ROOT, "knowledge")),
   APPLICATIONS_DIR: z.string().default(path.join(PROJECT_ROOT, "applications")),
