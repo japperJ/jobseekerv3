@@ -54,6 +54,10 @@ The sidebar model selector lists the Copilot models available to the logged-in
 account. Changing it applies to the next analysis, interview, or document
 generation request; `COPILOT_MODEL` remains the startup default.
 
+Expanded knowledge files can be edited directly in the sidebar. Click **Save
+changes** to write the Markdown file locally; the updated content is used by
+the next job analysis or document generation request.
+
 ## Configuration
 
 Role-specific fallback parsing rules are stored in `config/fallback-rules.md`.

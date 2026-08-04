@@ -3,7 +3,13 @@ import * as path from "node:path";
 import express from "express";
 import { config, PROJECT_ROOT } from "./config.js";
 import { CopilotManager } from "./copilot.js";
-import { loadAllKnowledge, appendConfirmedSkill, listKnowledge } from "./knowledge.js";
+import {
+  loadAllKnowledge,
+  appendConfirmedSkill,
+  isKnowledgeFile,
+  listKnowledge,
+  saveKnowledge,
+} from "./knowledge.js";
 import { analyzeJobListing } from "./analysis.js";
 import { askGapQuestion, interpretAnswer } from "./interview.js";
 import { generateApplicationDocuments } from "./generation.js";
@@ -396,6 +402,26 @@ app.post("/api/reset", (req, res) => {
 app.get("/api/knowledge", async (_req, res) => {
   const entries = await listKnowledge();
   res.json({ entries });
+});
+
+app.put("/api/knowledge/:file", async (req, res) => {
+  const file = String(req.params.file ?? "");
+  const content = req.body?.content;
+  if (!isKnowledgeFile(file)) {
+    return res.status(400).json({ error: "Unsupported knowledge file" });
+  }
+  if (typeof content !== "string") {
+    return res.status(400).json({ error: "Knowledge content must be text" });
+  }
+  try {
+    await saveKnowledge(file, content);
+    res.json({ ok: true, file });
+  } catch (err) {
+    console.error(`❌ /api/knowledge/${file} error:`, err);
+    res.status(500).json({
+      error: `Unable to save knowledge file: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
 });
 
 app.get("/api/applications", async (_req, res) => {

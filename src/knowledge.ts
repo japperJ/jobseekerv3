@@ -16,6 +16,10 @@ export interface KnowledgeEntry {
   content: string;
 }
 
+export function isKnowledgeFile(file: string): boolean {
+  return KNOWLEDGE_FILES.includes(file);
+}
+
 /** Returns every knowledge file with its name and content. */
 export async function listKnowledge(): Promise<KnowledgeEntry[]> {
   const dir = config.KNOWLEDGE_DIR;
@@ -38,6 +42,15 @@ export async function loadAllKnowledge(): Promise<string> {
   return entries
     .map((e) => `# ${e.title}\n${e.content}`)
     .join("\n\n---\n\n");
+}
+
+export async function saveKnowledge(file: string, content: string): Promise<void> {
+  if (!isKnowledgeFile(file)) {
+    throw new Error(`Unsupported knowledge file: ${file}`);
+  }
+  const dir = config.KNOWLEDGE_DIR;
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, file), content, "utf8");
 }
 
 /**

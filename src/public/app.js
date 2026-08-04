@@ -257,7 +257,11 @@
         li.innerHTML = `
           <details>
             <summary><span class="file-name">${esc(e.title)}</span></summary>
-            <pre class="knowledge-content">${esc(e.content)}</pre>
+            <div class="knowledge-editor">
+              <textarea class="knowledge-textarea" data-file="${esc(e.file)}">${esc(e.content)}</textarea>
+              <button class="btn btn-primary btn-small knowledge-save" data-file="${esc(e.file)}">Save changes</button>
+              <span class="save-status" aria-live="polite"></span>
+            </div>
           </details>`;
         knowledgeList.appendChild(li);
       });
@@ -265,6 +269,34 @@
       knowledgeList.innerHTML = "<li class='muted'>unavailable</li>";
     }
   }
+
+  knowledgeList.addEventListener("click", async (event) => {
+    const button = event.target.closest(".knowledge-save");
+    if (!button) return;
+    const file = button.dataset.file;
+    const item = button.closest(".expandable-item");
+    const textarea = item?.querySelector(".knowledge-textarea");
+    const status = item?.querySelector(".save-status");
+    if (!file || !textarea || !status) return;
+
+    button.disabled = true;
+    status.textContent = "Saving…";
+    try {
+      const res = await fetch(`/api/knowledge/${encodeURIComponent(file)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: textarea.value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save file");
+      status.textContent = "Saved";
+      setTimeout(() => { status.textContent = ""; }, 2500);
+    } catch (err) {
+      status.textContent = `Save failed: ${err.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  });
 
   async function loadApplications() {
     try {
