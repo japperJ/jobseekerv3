@@ -11,6 +11,7 @@
   const resetBtn = document.getElementById("resetBtn");
   const modelSelect = document.getElementById("modelSelect");
   const resizeHandle = document.getElementById("resizeHandle");
+  const composerResizeHandle = document.getElementById("composerResizeHandle");
   const statusDot = document.getElementById("statusDot");
   const statusText = document.getElementById("statusText");
   const knowledgeList = document.getElementById("knowledgeList");
@@ -58,6 +59,41 @@
     localStorage.setItem("jsv2-sidebar-width", String(next));
   });
 
+ const COMPOSER_MIN = 44;
+  const COMPOSER_MAX = 520;
+  const savedComposerHeight = Number(localStorage.getItem("jsv2-composer-height"));
+  if (Number.isFinite(savedComposerHeight) && savedComposerHeight >= COMPOSER_MIN && savedComposerHeight <= COMPOSER_MAX) {
+    inputEl.style.height = `${savedComposerHeight}px`;
+  }
+
+  let resizingComposer = false;
+  composerResizeHandle.addEventListener("pointerdown", (event) => {
+    resizingComposer = true;
+    composerResizeHandle.classList.add("active");
+    composerResizeHandle.setPointerCapture(event.pointerId);
+    document.body.style.userSelect = "none";
+  });
+  composerResizeHandle.addEventListener("pointermove", (event) => {
+    if (!resizingComposer) return;
+    const height = Math.max(COMPOSER_MIN, Math.min(COMPOSER_MAX, window.innerHeight - event.clientY));
+    inputEl.style.height = `${height}px`;
+  });
+  composerResizeHandle.addEventListener("pointerup", (event) => {
+    if (!resizingComposer) return;
+    resizingComposer = false;
+    composerResizeHandle.classList.remove("active");
+    composerResizeHandle.releasePointerCapture(event.pointerId);
+    document.body.style.userSelect = "";
+    localStorage.setItem("jsv2-composer-height", String(inputEl.getBoundingClientRect().height));
+  });
+  composerResizeHandle.addEventListener("keydown", (event) => {
+    if (!["ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    const current = inputEl.getBoundingClientRect().height;
+    const next = Math.max(COMPOSER_MIN, Math.min(COMPOSER_MAX, current + (event.key === "ArrowUp" ? 24 : -24)));
+    inputEl.style.height = `${next}px`;
+    localStorage.setItem("jsv2-composer-height", String(next));
+  });
   // ── Helpers ─────────────────────────────────────────────
   function setStatus(text, cls) {
     statusText.textContent = text;

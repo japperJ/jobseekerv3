@@ -249,6 +249,15 @@ body {
 .quick-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
 /* Composer */
+.composer-resize-handle {
+  height: 7px;
+  flex: none;
+  cursor: row-resize;
+  background: var(--border);
+  transition: background .15s;
+}
+.composer-resize-handle:hover,
+.composer-resize-handle.active { background: var(--accent); }
 .composer {
   display: flex; gap: 10px; align-items: flex-end;
   padding: 14px 22px;
@@ -256,6 +265,8 @@ body {
 }
 .composer textarea {
   flex: 1; resize: none;
+  min-height: 44px;
+  max-height: 45vh;
   border: 1px solid var(--border); border-radius: 12px;
   padding: 11px 14px; font-family: inherit; font-size: 14px;
   line-height: 1.4; outline: none;
