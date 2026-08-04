@@ -10,12 +10,53 @@
   const sendBtn = document.getElementById("sendBtn");
   const resetBtn = document.getElementById("resetBtn");
   const modelSelect = document.getElementById("modelSelect");
+  const resizeHandle = document.getElementById("resizeHandle");
   const statusDot = document.getElementById("statusDot");
   const statusText = document.getElementById("statusText");
   const knowledgeList = document.getElementById("knowledgeList");
   const appList = document.getElementById("appList");
 
   let busy = false;
+
+  const SIDEBAR_MIN = 240;
+  const SIDEBAR_MAX = 520;
+  const savedSidebarWidth = Number(localStorage.getItem("jsv2-sidebar-width"));
+  if (Number.isFinite(savedSidebarWidth) && savedSidebarWidth >= SIDEBAR_MIN && savedSidebarWidth <= SIDEBAR_MAX) {
+    document.documentElement.style.setProperty("--sidebar-width", `${savedSidebarWidth}px`);
+  }
+
+  let resizing = false;
+  resizeHandle.addEventListener("pointerdown", (event) => {
+    resizing = true;
+    resizeHandle.classList.add("active");
+    resizeHandle.setPointerCapture(event.pointerId);
+    document.body.style.userSelect = "none";
+  });
+  resizeHandle.addEventListener("pointermove", (event) => {
+    if (!resizing) return;
+    const width = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, event.clientX));
+    document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
+  });
+  resizeHandle.addEventListener("pointerup", (event) => {
+    if (!resizing) return;
+    resizing = false;
+    resizeHandle.classList.remove("active");
+    resizeHandle.releasePointerCapture(event.pointerId);
+    document.body.style.userSelect = "";
+    const width = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width"), 10);
+    localStorage.setItem("jsv2-sidebar-width", String(width));
+  });
+  resizeHandle.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width"), 10);
+    const next = Math.max(
+      SIDEBAR_MIN,
+      Math.min(SIDEBAR_MAX, current + (event.key === "ArrowRight" ? 16 : -16)),
+    );
+    document.documentElement.style.setProperty("--sidebar-width", `${next}px`);
+    localStorage.setItem("jsv2-sidebar-width", String(next));
+  });
 
   // ── Helpers ─────────────────────────────────────────────
   function setStatus(text, cls) {
