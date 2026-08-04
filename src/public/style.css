@@ -104,6 +104,51 @@ body {
 .file-list .muted { color: var(--muted); font-style: italic; }
 .file-list .file-name { font-weight: 600; }
 .file-list .file-meta { color: var(--muted); font-size: 11px; }
+.expandable-item details { padding: 1px 0; }
+.expandable-item summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 3px 0;
+}
+.expandable-item summary::-webkit-details-marker { display: none; }
+.expandable-item summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 14px;
+  color: var(--accent);
+  transition: transform .15s;
+}
+.expandable-item details[open] summary::before { transform: rotate(90deg); }
+.knowledge-content {
+  max-height: 260px;
+  overflow: auto;
+  margin: 7px 0 3px 14px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: 11px/1.45 Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.application-content {
+  margin: 7px 0 4px 14px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.application-content p { margin: 5px 0 8px; }
+.application-downloads {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.application-downloads a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.application-downloads a:hover { text-decoration: underline; }
 
 /* ── Buttons ─────────────────────────────── */
 .btn {

@@ -253,7 +253,12 @@
       knowledgeList.innerHTML = "";
       (data.entries || []).forEach((e) => {
         const li = document.createElement("li");
-        li.innerHTML = `<span class="file-name">${esc(e.title)}</span>`;
+        li.className = "expandable-item";
+        li.innerHTML = `
+          <details>
+            <summary><span class="file-name">${esc(e.title)}</span></summary>
+            <pre class="knowledge-content">${esc(e.content)}</pre>
+          </details>`;
         knowledgeList.appendChild(li);
       });
     } catch {
@@ -274,8 +279,30 @@
 
       apps.slice(0, 12).forEach((a) => {
         const li = document.createElement("li");
+        li.className = "expandable-item";
         const d = new Date(a.date).toLocaleDateString();
-        li.innerHTML = `<span class="file-name">${esc(a.role)}</span><br><span class="file-meta">${esc(a.company)} · ${d} · match ${a.score}%</span>`;
+        const files = [
+          ["CV (English)", "CV_English.pdf"],
+          ["CV (Dansk)", "CV_Dansk.pdf"],
+          ["Cover Letter (English)", "Cover_Letter_English.pdf"],
+          ["Ansøgning (Dansk)", "Ansoegning_Dansk.pdf"],
+        ]
+          .map(([label, filename]) =>
+            `<a href="/api/download/applications/${encodeURIComponent(a.folder)}/${filename}" download>${label}</a>`,
+          )
+          .join("");
+        li.innerHTML = `
+          <details>
+            <summary>
+              <span class="file-name">${esc(a.role)}</span><br>
+              <span class="file-meta">${esc(a.company)} · ${d} · match ${a.score}%</span>
+            </summary>
+            <div class="application-content">
+              <div><strong>Location:</strong> ${esc(a.location || "Not specified")}</div>
+              <p>${esc(a.summary || "No summary available.")}</p>
+              <div class="application-downloads">${files}</div>
+            </div>
+          </details>`;
         appList.appendChild(li);
       });
     } catch {
