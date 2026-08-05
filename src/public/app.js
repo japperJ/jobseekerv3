@@ -16,8 +16,24 @@
   const statusText = document.getElementById("statusText");
   const knowledgeList = document.getElementById("knowledgeList");
   const appList = document.getElementById("appList");
+  const themeToggle = document.getElementById("themeToggle");
 
   let busy = false;
+
+  const savedTheme = localStorage.getItem("jsv2-theme");
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  let darkTheme = savedTheme ? savedTheme === "dark" : Boolean(prefersDark);
+  function applyTheme() {
+    document.body.classList.toggle("dark-theme", darkTheme);
+    themeToggle.textContent = darkTheme ? "☀ Light" : "☾ Dark";
+    themeToggle.title = darkTheme ? "Switch to light theme" : "Switch to dark theme";
+  }
+  applyTheme();
+  themeToggle.addEventListener("click", () => {
+    darkTheme = !darkTheme;
+    localStorage.setItem("jsv2-theme", darkTheme ? "dark" : "light");
+    applyTheme();
+  });
 
   const SIDEBAR_MIN = 240;
   const SIDEBAR_MAX = 520;
@@ -94,6 +110,75 @@
     inputEl.style.height = `${next}px`;
     localStorage.setItem("jsv2-composer-height", String(next));
   });
+
+  const appEl = document.getElementById("app");
+  const traceToggle = document.getElementById("traceToggle");
+  const traceResizeHandle = document.getElementById("traceResizeHandle");
+  const traceBody = document.getElementById("traceBody");
+  const traceClearBtn = document.getElementById("traceClearBtn");
+  const TRACE_MIN = 280;
+  const TRACE_MAX = 620;
+  const savedTraceWidth = Number(localStorage.getItem("jsv2-trace-width"));
+  if (Number.isFinite(savedTraceWidth) && savedTraceWidth >= TRACE_MIN && savedTraceWidth <= TRACE_MAX) {
+    document.documentElement.style.setProperty("--trace-width", `${savedTraceWidth}px`);
+  }
+  let traceSnapshot = { runs: [] };
+  let traceSource = null;
+  if (localStorage.getItem("jsv2-trace-open") === "1") appEl.classList.add("trace-open");
+  traceToggle.addEventListener("click", () => {
+    const open = appEl.classList.toggle("trace-open");
+    localStorage.setItem("jsv2-trace-open", open ? "1" : "0");
+    if (open) { connectTrace(); renderTrace(); }
+  });
+  traceClearBtn.addEventListener("click", async () => {
+    await fetch("/api/trace/clear", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId }) });
+    traceSnapshot = { runs: [] };
+    renderTrace();
+  });
+  function connectTrace() {
+    if (traceSource) return;
+    traceSource = new EventSource(`/api/trace/stream?clientId=${encodeURIComponent(clientId)}`);
+    traceSource.addEventListener("message", (event) => {
+      try { traceSnapshot = JSON.parse(event.data).snapshot || { runs: [] }; renderTrace(); } catch { /* ignore malformed events */ }
+    });
+  }
+  function traceSection(title, content, open) {
+    const details = document.createElement("details");
+    details.className = "trace-section";
+    details.open = open;
+    details.innerHTML = `<summary>${esc(title)}</summary><pre class="trace-${title === "Prompt sent" ? "prompt" : "response"}">${esc(content)}</pre>`;
+    return details;
+  }
+  function renderTrace() {
+    traceBody.innerHTML = "";
+    const runs = traceSnapshot.runs || [];
+    if (!runs.length) { traceBody.innerHTML = '<div class="trace-empty">No LLM calls yet. Send a message to see the trace.</div>'; return; }
+    runs.forEach((run) => {
+      const div = document.createElement("div");
+      div.className = `trace-run ${esc(run.status)}`;
+      const duration = run.durationMs == null ? "" : `${run.durationMs < 1000 ? run.durationMs + "ms" : (run.durationMs / 1000).toFixed(1) + "s"}`;
+      div.innerHTML = `<div class="trace-run-header"><span class="trace-run-label">${esc(run.label || "LLM call")}</span><span class="trace-run-status ${esc(run.status)}">${run.status === "running" ? "running…" : run.status}</span><span class="trace-run-meta">${esc([run.model, duration].filter(Boolean).join(" · "))}</span></div>${run.error ? `<div class="trace-error">⚠️ ${esc(run.error)}</div>` : ""}`;
+      if (run.prompt) div.appendChild(traceSection("Prompt sent", run.prompt, false));
+      if (run.finalText) div.appendChild(traceSection("Response", run.finalText, true));
+      traceBody.appendChild(div);
+    });
+    traceBody.scrollTop = traceBody.scrollHeight;
+  }
+  traceResizeHandle.addEventListener("pointerdown", (event) => {
+    traceResizeHandle.setPointerCapture(event.pointerId);
+    traceResizeHandle.classList.add("active");
+    traceResizeHandle.onpointermove = (move) => {
+      const width = Math.max(TRACE_MIN, Math.min(TRACE_MAX, window.innerWidth - move.clientX));
+      document.documentElement.style.setProperty("--trace-width", `${width}px`);
+    };
+    traceResizeHandle.onpointerup = () => {
+      traceResizeHandle.classList.remove("active");
+      traceResizeHandle.onpointermove = null;
+      localStorage.setItem("jsv2-trace-width", getComputedStyle(document.documentElement).getPropertyValue("--trace-width").trim().replace("px", ""));
+    };
+  });
+  if (appEl.classList.contains("trace-open")) connectTrace();
+
   // ── Helpers ─────────────────────────────────────────────
   function setStatus(text, cls) {
     statusText.textContent = text;

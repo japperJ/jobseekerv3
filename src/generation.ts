@@ -12,6 +12,7 @@ export async function generateApplicationDocuments(
   confirmedEvidence: string[],
   manager: CopilotManager,
   onChunk?: (chunk: string) => void,
+  onTrace?: (event: import("./copilot.js").TraceEvent) => void,
 ): Promise<GeneratedDocuments> {
   const basePrompt = generateDocumentsPrompt(job, knowledgeText, confirmedEvidence);
   let docs: DocumentSections = {};
@@ -28,6 +29,8 @@ export async function generateApplicationDocuments(
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 240_000,
       onChunk,
+      label: `Generate documents${attempt ? " (retry)" : ""}`,
+      onTrace,
     });
 
     // Split on the four document headings (robust against "---" used as an

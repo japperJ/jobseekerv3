@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app">
+  <div class="app" id="app">
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="brand">
@@ -51,6 +51,8 @@
     <main class="chat">
       <header class="chat-header">
         <span>Paste a job listing — get an ATS-safe CV & cover letter (DA + EN)</span>
+        <button class="theme-toggle" id="themeToggle" title="Switch light or dark theme">☾ Dark</button>
+        <button class="trace-toggle" id="traceToggle" title="Show or hide the LLM call trace">🧠 Thinking</button>
       </header>
       <div class="messages" id="messages">
         <div class="msg bot">
@@ -72,6 +74,12 @@
         <button class="btn btn-primary" id="sendBtn">Send</button>
       </div>
     </main>
+
+    <div class="trace-resize-handle" id="traceResizeHandle" role="separator" aria-label="Resize thinking panel" aria-orientation="vertical" tabindex="0"></div>
+    <aside class="trace-panel" id="tracePanel">
+      <div class="trace-header"><span>LLM thinking trace</span><button class="trace-clear" id="traceClearBtn">Clear</button></div>
+      <div class="trace-body" id="traceBody"><div class="trace-empty">No LLM calls yet. Send a message to see the trace.</div></div>
+    </aside>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>

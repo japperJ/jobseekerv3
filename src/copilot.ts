@@ -14,6 +14,19 @@ export interface RunOptions {
   /** Called with streaming text chunks as the assistant replies. */
   onChunk?: (chunk: string) => void;
   model?: string;
+  label?: string;
+  onTrace?: (event: TraceEvent) => void;
+}
+
+export interface TraceEvent {
+  kind: "run-start" | "run-end" | "run-error";
+  label?: string;
+  model?: string;
+  timestamp: number;
+  prompt?: string;
+  durationMs?: number;
+  finalText?: string;
+  error?: string;
 }
 
 /**
@@ -97,6 +110,20 @@ export class CopilotManager {
 
   private async runOnce(client: CopilotClient, opts: RunOptions): Promise<string> {
     const session = await this.buildSession(client, opts);
+    const startedAt = Date.now();
+    const emit = (event: Omit<TraceEvent, "timestamp">): void => {
+      try {
+        opts.onTrace?.({ ...event, timestamp: Date.now() });
+      } catch {
+        /* A trace sink must never break an LLM request. */
+      }
+    };
+    emit({
+      kind: "run-start",
+      label: opts.label,
+      model: (opts.model ?? this.selectedModel ?? config.COPILOT_MODEL).toLowerCase(),
+      prompt: opts.prompt,
+    });
     try {
       let unsubscribe: (() => void) | undefined;
       if (opts.onChunk) {
@@ -112,7 +139,17 @@ export class CopilotManager {
         opts.timeoutMs ?? 120_000,
       );
       if (unsubscribe) unsubscribe();
-      return result?.data?.content ?? "";
+      const finalText = result?.data?.content ?? "";
+      emit({ kind: "run-end", label: opts.label, durationMs: Date.now() - startedAt, finalText });
+      return finalText;
+    } catch (err) {
+      emit({
+        kind: "run-error",
+        label: opts.label,
+        durationMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     } finally {
       try {
         await session.disconnect();

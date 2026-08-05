@@ -15,12 +15,15 @@ export async function askGapQuestion(
   idx: number,
   total: number,
   manager: CopilotManager,
+  onTrace?: (event: import("./copilot.js").TraceEvent) => void,
 ): Promise<string> {
   try {
     const text = await manager.run({
       prompt: interviewQuestionPrompt(requirement, job, idx, total),
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 60_000,
+      label: "Ask gap question",
+      onTrace,
     });
     const cleaned = text.replace(/^["'\s]+|["'\s]+$/g, "").trim();
     return cleaned || `Do you have experience with: "${requirement.text}"?`;
@@ -37,12 +40,15 @@ export async function interpretAnswer(
   requirement: JobRequirement,
   userAnswer: string,
   manager: CopilotManager,
+  onTrace?: (event: import("./copilot.js").TraceEvent) => void,
 ): Promise<InterpretedAnswer> {
   try {
     const raw = await manager.run({
       prompt: interpretAnswerPrompt(requirement, userAnswer),
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 60_000,
+      label: "Interpret interview answer",
+      onTrace,
     });
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");

@@ -2,7 +2,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import express from "express";
 import { config, PROJECT_ROOT } from "./config.js";
-import { CopilotManager } from "./copilot.js";
+import { CopilotManager, type TraceEvent } from "./copilot.js";
+import { TraceStore } from "./trace.js";
 import {
   loadAllKnowledge,
   appendConfirmedSkill,
@@ -25,6 +26,11 @@ app.use(express.static(path.join(PROJECT_ROOT, "src", "public")));
 
 const manager = new CopilotManager();
 const clients = new Map<string, ClientState>();
+const traces = new TraceStore();
+
+function traceSink(clientId: string): (event: TraceEvent) => void {
+  return (event) => traces.route(clientId, event);
+}
 
 function newState(): ClientState {
   return {
@@ -98,9 +104,10 @@ interface MessageResponse {
   [k: string]: unknown;
 }
 
-async function runAnalysis(state: ClientState, listingText: string): Promise<MessageResponse> {
+async function runAnalysis(state: ClientState, listingText: string, clientId: string): Promise<MessageResponse> {
   const knowledge = await loadAllKnowledge();
-  const analysis = await analyzeJobListing(listingText, knowledge, manager);
+  const onTrace = traceSink(clientId);
+  const analysis = await analyzeJobListing(listingText, knowledge, manager, onTrace);
 
   state.job = analysis.job;
   state.analysis = analysis;
@@ -126,7 +133,7 @@ async function runAnalysis(state: ClientState, listingText: string): Promise<Mes
 
   state.phase = "interview";
   const next = state.remaining[0];
-  const question = await askGapQuestion(next, job, 1, analysis.missing.length, manager);
+  const question = await askGapQuestion(next, job, 1, analysis.missing.length, manager, onTrace);
   return {
     type: "analysis",
     message: `${head}\n\nI found **${analysis.missing.length}** requirement${analysis.missing.length === 1 ? "" : "s"} your profile doesn't clearly cover. I'll ask about them one at a time — if you have the experience, I'll save it for all future applications.\n\n**${question}**`,
@@ -143,9 +150,11 @@ async function runAnalysis(state: ClientState, listingText: string): Promise<Mes
 async function processAnswer(
   state: ClientState,
   userMessage: string,
+  clientId: string,
 ): Promise<MessageResponse> {
   const req = state.remaining[0];
-  const interpreted = await interpretAnswer(req, userMessage, manager);
+  const onTrace = traceSink(clientId);
+  const interpreted = await interpretAnswer(req, userMessage, manager, onTrace);
 
   state.answers.push({ requirement: req, ...interpreted });
   state.remaining.shift();
@@ -181,6 +190,7 @@ async function processAnswer(
     state.answers.length + 1,
     state.answers.length + state.remaining.length,
     manager,
+    onTrace,
   );
   return {
     type: "question",
@@ -214,7 +224,7 @@ function statefulNote(s: string): void {
   }
 }
 
-async function generatePdfs(state: ClientState, jobDescriptionText: string): Promise<MessageResponse> {
+async function generatePdfs(state: ClientState, jobDescriptionText: string, clientId: string): Promise<MessageResponse> {
   if (!state.job || !state.analysis) {
     return { type: "error", message: "No job analysis found. Paste a job listing first." };
   }
@@ -226,6 +236,8 @@ async function generatePdfs(state: ClientState, jobDescriptionText: string): Pro
     knowledge,
     state.confirmed,
     manager,
+    undefined,
+    traceSink(clientId),
   );
 
   // Render PDFs to a staging area, then move into the application folder.
@@ -276,6 +288,7 @@ async function handleMessage(clientId: string, userMessage: string): Promise<Mes
   // Reset command works in any phase.
   if (isResetIntent(msg)) {
     clients.set(clientId, newState());
+    traces.clear(clientId);
     return { type: "reset", message: "State cleared. Paste a new job listing to start over." };
   }
 
@@ -287,17 +300,19 @@ async function handleMessage(clientId: string, userMessage: string): Promise<Mes
           if (listing.length < 50) {
             return { type: "error", message: "Could not read any content from that URL. Try pasting the job description as text instead." };
           }
-          return await runAnalysis(state, listing);
+          return await runAnalysis(state, listing, clientId);
         } catch (err) {
           return { type: "error", message: `Failed to fetch that URL: ${err instanceof Error ? err.message : String(err)}` };
         }
       }
       if (looksLikeListing(msg)) {
-        return await runAnalysis(state, msg);
+        return await runAnalysis(state, msg, clientId);
       }
       const reply = await manager.run({
         prompt: idleChatPrompt(msg),
         timeoutMs: 60_000,
+        label: "Chat reply",
+        onTrace: traceSink(clientId),
       });
       return { type: "chat", message: reply || "Paste a job listing (or a URL) and I'll build your tailored CV and cover letter." };
     }
@@ -320,13 +335,13 @@ async function handleMessage(clientId: string, userMessage: string): Promise<Mes
           message: `✅ Moving on (${savedCount} item${savedCount === 1 ? "" : "s"} saved). Type **generate** to create the PDFs.`,
         };
       }
-      return await processAnswer(state, msg);
+      return await processAnswer(state, msg, clientId);
     }
 
     case "ready": {
       if (isGenerateIntent(msg)) {
         try {
-          return await generatePdfs(state, state.listingText || msg);
+          return await generatePdfs(state, state.listingText || msg, clientId);
         } catch (err) {
           return { type: "error", message: `Generation failed: ${err instanceof Error ? err.message : String(err)}` };
         }
@@ -396,7 +411,27 @@ app.post("/api/message", async (req, res) => {
 app.post("/api/reset", (req, res) => {
   const clientId = String(req.body?.clientId ?? "default");
   clients.delete(clientId);
+  traces.clear(clientId);
   res.json({ type: "reset", message: "State cleared." });
+});
+
+app.get("/api/trace/stream", (req, res) => {
+  const clientId = String(req.query?.clientId ?? "default");
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  const send = () => res.write(`data: ${JSON.stringify({ snapshot: traces.snapshot(clientId) })}\n\n`);
+  send();
+  const unsubscribe = traces.subscribe(clientId, send);
+  const heartbeat = setInterval(() => res.write(": ping\n\n"), 15000);
+  req.on("close", () => { clearInterval(heartbeat); unsubscribe(); });
+});
+
+app.post("/api/trace/clear", (req, res) => {
+  const clientId = String(req.body?.clientId ?? "default");
+  traces.clear(clientId);
+  res.json({ ok: true });
 });
 
 app.get("/api/knowledge", async (_req, res) => {

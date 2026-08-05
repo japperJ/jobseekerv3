@@ -79,6 +79,7 @@ export async function analyzeJobListing(
   listing: string,
   knowledgeText: string,
   manager: CopilotManager,
+  onTrace?: (event: import("./copilot.js").TraceEvent) => void,
 ): Promise<AnalysisResult> {
   let job: JobInfo;
   try {
@@ -86,6 +87,8 @@ export async function analyzeJobListing(
       prompt: analyzeListingPrompt(listing, knowledgeText),
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 120_000,
+      label: "Parse job listing",
+      onTrace,
     });
     const parsed = extractJson<{
       company: string | null;
@@ -117,6 +120,8 @@ export async function analyzeJobListing(
       prompt: matchPrompt(job.requirements, knowledgeText),
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 120_000,
+      label: "Score job match",
+      onTrace,
     });
     assessments = extractJson<{ assessments: MatchAssessment[] }>(matchRaw).assessments ?? [];
   } catch (err) {
