@@ -22,4 +22,17 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const config = parsed.data;
+function normalizeCopilotModel(value: string): string {
+  const model = value.trim().toLowerCase();
+  if (model.startsWith("github-copilot/")) return model;
+  if (model.includes("/")) {
+    console.warn(`⚠️ Ignoring non-Copilot model "${value}"; using github-copilot/gpt-5.6-luna.`);
+    return "github-copilot/gpt-5.6-luna";
+  }
+  return `github-copilot/${model}`;
+}
+
+export const config = {
+  ...parsed.data,
+  COPILOT_MODEL: normalizeCopilotModel(parsed.data.COPILOT_MODEL),
+};

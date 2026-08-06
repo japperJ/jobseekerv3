@@ -19,7 +19,7 @@ export async function askGapQuestion(
 ): Promise<string> {
   try {
     const text = await manager.run({
-      prompt: interviewQuestionPrompt(requirement, job, idx, total),
+      prompt: await interviewQuestionPrompt(requirement, job, idx, total),
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 60_000,
       label: "Ask gap question",
@@ -44,7 +44,7 @@ export async function interpretAnswer(
 ): Promise<InterpretedAnswer> {
   try {
     const raw = await manager.run({
-      prompt: interpretAnswerPrompt(requirement, userAnswer),
+      prompt: await interpretAnswerPrompt(requirement, userAnswer),
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 60_000,
       label: "Interpret interview answer",

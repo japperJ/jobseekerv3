@@ -4,6 +4,7 @@ import {
   FALLBACK_ROLE_PATTERN,
 } from "./fallback-config.js";
 import { analyzeListingPrompt, matchPrompt, analysisSystemMessage } from "./prompts.js";
+import { computeCoverage, makeAssessment } from "./requirement-review.js";
 import type { AnalysisResult, JobInfo, JobRequirement, MatchAssessment } from "./types.js";
 
 /** Extracts the first JSON object from a model response (strips fences/wrappers). */
@@ -56,19 +57,42 @@ const GENERIC_REQUIREMENT_WORDS = new Set([
   "worked",
 ]);
 
-function hasKnowledgeEvidence(requirement: string, knowledgeText: string): boolean {
+/** Pulls a short snippet of knowledgeText around a case-insensitive match, for evidence quoting. */
+function quoteAround(knowledgeText: string, needle: string): string | null {
+  const idx = knowledgeText.toLowerCase().indexOf(needle.toLowerCase());
+  if (idx === -1) return null;
+  const start = Math.max(0, idx - 40);
+  const end = Math.min(knowledgeText.length, idx + needle.length + 40);
+  const snippet = knowledgeText.slice(start, end).replace(/\s+/g, " ").trim();
+  return (start > 0 ? "…" : "") + snippet + (end < knowledgeText.length ? "…" : "");
+}
+
+/** Checks whether a requirement is explicitly documented in the knowledge folder; returns a quoted snippet when found. */
+function findKnowledgeEvidence(requirement: string, knowledgeText: string): { matched: boolean; quote: string | null } {
   const lowerRequirement = requirement.toLowerCase().trim();
   const lowerKnowledge = knowledgeText.toLowerCase();
-  if (!lowerRequirement) return false;
-  if (lowerKnowledge.includes(lowerRequirement)) return true;
+  if (!lowerRequirement) return { matched: false, quote: null };
+  if (lowerKnowledge.includes(lowerRequirement)) {
+    return { matched: true, quote: quoteAround(knowledgeText, requirement) };
+  }
 
   const meaningfulTerms = (requirement.match(/[A-Za-z][A-Za-z0-9+#./-]*/g) ?? [])
     .filter((term) => !GENERIC_REQUIREMENT_WORDS.has(term.toLowerCase()))
     .filter((term) => term.length >= 5 || /^[A-Z][A-Z0-9+#./-]*$/.test(term));
 
-  return meaningfulTerms.some((term) =>
-    new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(knowledgeText),
-  );
+  for (const term of meaningfulTerms) {
+    const re = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    if (re.test(knowledgeText)) {
+      return { matched: true, quote: quoteAround(knowledgeText, term) };
+    }
+  }
+  return { matched: false, quote: null };
+}
+
+function normalizeVerdict(value: unknown): MatchAssessment["verdict"] {
+  return (["yes", "partial", "no", "uncertain", "not_relevant"] as const).includes(value as never)
+    ? value as MatchAssessment["verdict"]
+    : "uncertain";
 }
 
 /**
@@ -84,7 +108,7 @@ export async function analyzeJobListing(
   let job: JobInfo;
   try {
     const parseRaw = await manager.run({
-      prompt: analyzeListingPrompt(listing, knowledgeText),
+      prompt: await analyzeListingPrompt(listing, knowledgeText),
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 120_000,
       label: "Parse job listing",
@@ -114,16 +138,23 @@ export async function analyzeJobListing(
   }
 
   // Score the match using the model when possible, else a keyword heuristic.
+  // Both paths are normalized to the same MatchAssessment shape (source +
+  // confidence) so the review matrix can show provenance consistently.
   let assessments: MatchAssessment[] = [];
   try {
     const matchRaw = await manager.run({
-      prompt: matchPrompt(job.requirements, knowledgeText),
+      prompt: await matchPrompt(job.requirements, knowledgeText),
       systemMessage: analysisSystemMessage() as never,
       timeoutMs: 120_000,
       label: "Score job match",
       onTrace,
     });
-    assessments = extractJson<{ assessments: MatchAssessment[] }>(matchRaw).assessments ?? [];
+    const modelAssessments = extractJson<{
+      assessments: Array<{ index: number; verdict: MatchAssessment["verdict"]; reason: string }>;
+    }>(matchRaw).assessments ?? [];
+    assessments = modelAssessments.map((a) =>
+      makeAssessment(a.index, normalizeVerdict(a.verdict), a.reason ?? "", "model", "medium"),
+    );
   } catch (err) {
     console.warn(`⚠️ Model-based match scoring failed (${err instanceof Error ? err.message : String(err)}); using keyword fallback.`);
     const lower = knowledgeText.toLowerCase();
@@ -131,21 +162,27 @@ export async function analyzeJobListing(
       const words = r.text.toLowerCase().split(/\W+/).filter((w) => w.length > 3);
       const hit = words.filter((w) => lower.includes(w)).length;
       const verdict: MatchAssessment["verdict"] = hit >= 1 ? "yes" : hit === 0 && words.length > 0 ? "no" : "partial";
-      return { index, verdict, reason: `matched ${hit}/${words.length} keywords` };
+      return makeAssessment(index, verdict, `matched ${hit}/${words.length} keywords`, "fallback_keyword", "low");
     });
   }
 
-  // Do not ask about a requirement that is already explicitly documented.
+  // Do not ask about a requirement that is already explicitly documented —
+  // an exact/near-exact textual match in the knowledge folder is treated as
+  // high-confidence evidence, overriding a lower-confidence model/fallback verdict.
   assessments = job.requirements.map((requirement, index) => {
     const existing = assessments.find((assessment) => assessment.index === index);
-    if (hasKnowledgeEvidence(requirement.text, knowledgeText)) {
-      return {
+    const evidence = findKnowledgeEvidence(requirement.text, knowledgeText);
+    if (evidence.matched) {
+      return makeAssessment(
         index,
-        verdict: "yes" as const,
-        reason: "explicitly documented in the knowledge folder",
-      };
+        "yes",
+        "explicitly documented in the knowledge folder",
+        "knowledge_match",
+        "high",
+        evidence.quote,
+      );
     }
-    return existing ?? { index, verdict: "no" as const, reason: "no matching evidence" };
+    return existing ?? makeAssessment(index, "no", "no matching evidence", "fallback_keyword", "low");
   });
 
   const byIndex = new Map(assessments.map((a) => [a.index, a.verdict]));
@@ -157,9 +194,7 @@ export async function analyzeJobListing(
     else missing.push(req);
   });
 
-  const score = job.requirements.length > 0
-    ? Math.round((covered.length / job.requirements.length) * 100)
-    : 0;
+  const coverage = computeCoverage(covered.length, job.requirements.length);
 
-  return { job, assessments, missing, covered, score };
+  return { job, assessments, missing, covered, score: coverage.percentage, coverage };
 }
