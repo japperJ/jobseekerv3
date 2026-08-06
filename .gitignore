@@ -1,8 +1,8 @@
 node_modules/
 dist/
 .env
-applications/
-knowledge/
+/applications/
+/knowledge/
 .impeccable/
 .playwright-mcp/
 *.log
