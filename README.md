@@ -2,6 +2,10 @@
 
 A local web chat assistant that turns a job listing into tailored CV and cover-letter PDFs in English and Danish.
 
+## Screenshot
+
+![Jobseeker v2 application screenshot](docs/jobseeker-v2-screenshot.png)
+
 ## Knowledge folder
 
 The `knowledge/` folder contains the candidate's private source information. It is intentionally excluded from Git by `.gitignore` and must be created/populated separately on each machine.
