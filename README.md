@@ -1,15 +1,15 @@
-# Jobseeker v2
+# Jobseeker v3
 
 A local web chat assistant that turns a job listing into tailored CV and cover-letter PDFs in English and Danish.
 
-Jobseeker v2 is a free, open-source local tool for quickly creating
+Jobseeker v3 is a free, open-source local tool for quickly creating
 tailored, ATS-friendly job applications from a pasted job listing. It runs on
 the user's computer and keeps candidate knowledge and generated applications
 local.
 
 ## Screenshot
 
-![Jobseeker v2 application screenshot](docs/jobseeker-v2-screenshot.png)
+![Jobseeker v3 application screenshot](docs/jobseeker-v3-screenshot.png)
 
 ## Knowledge folder
 
