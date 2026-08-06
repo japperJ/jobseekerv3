@@ -6,6 +6,19 @@ A local web chat assistant that turns a job listing into tailored CV and cover-l
 
 The `knowledge/` folder contains the candidate's private source information. It is intentionally excluded from Git by `.gitignore` and must be created/populated separately on each machine.
 
+This public repository includes fictional starter data in `sample/knowledge/` for
+**John Doe**. It is safe demonstration content only; do not use it as a real
+CV. After cloning, copy those files into a local `knowledge/` folder:
+
+```powershell
+New-Item -ItemType Directory -Force knowledge
+Copy-Item sample\knowledge\* knowledge\
+```
+
+Then replace the fictional content with your own information. The live
+`knowledge/` folder remains ignored by Git so private candidate data is not
+accidentally published.
+
 The app reads these Markdown files:
 
 | File | What it should contain |
