@@ -15,7 +15,7 @@ import { analyzeJobListing } from "./analysis.js";
 import { askGapQuestion, interpretAnswer } from "./interview.js";
 import { generateApplicationDocuments } from "./generation.js";
 import { markdownToPdf } from "./pdf.js";
-import { saveApplication, readIndex } from "./applications.js";
+import { saveApplication, readIndex, deleteApplication } from "./applications.js";
 import { fetchListingText } from "./fetch-listing.js";
 import { idleChatPrompt } from "./prompts.js";
 import type { ClientState } from "./types.js";
@@ -267,7 +267,7 @@ async function generatePdfs(state: ClientState, jobDescriptionText: string, clie
   const rel = (p: string) => p.slice(PROJECT_ROOT.length).replace(/\\/g, "/");
   return {
     type: "generated",
-    message: `🎉 **Done!** Your application package for **${job.role}** at **${job.company ?? "the company"}** is ready:\n\n📄 CV (English) · 📄 CV (Dansk) · 💌 Cover Letter (English) · 💌 Ansøgning (Dansk)\n\nFiles are in \`applications/${files.folder}/\``,
+    message: `🎉 **Done!** Your application package for **${job.role}** at **${job.company ?? "the company"}** is ready:\n\n📄 CV (English) · 📄 CV (Dansk) · 💌 Cover Letter (English) · 💌 Ansøgning (Dansk)\n\nOpen the **Applications** panel on the left to download your four PDF files.`,
     files: {
       folder: files.folder,
       cvEn: rel(files.cvEn),
@@ -461,6 +461,21 @@ app.put("/api/knowledge/:file", async (req, res) => {
 
 app.get("/api/applications", async (_req, res) => {
   res.json({ applications: await readIndex() });
+});
+
+app.delete("/api/applications/:folder", async (req, res) => {
+  const folder = String(req.params.folder ?? "");
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(folder)) {
+    return res.status(400).json({ error: "Invalid application folder" });
+  }
+  try {
+    const deleted = await deleteApplication(folder);
+    if (!deleted) return res.status(404).json({ error: "Application not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(`❌ /api/applications/${folder} delete error:`, err);
+    res.status(500).json({ error: `Unable to delete application: ${err instanceof Error ? err.message : String(err)}` });
+  }
 });
 
 app.get("/api/state", (req, res) => {

@@ -248,9 +248,9 @@
         html += `<div class="score-card">
           <div class="score-ring" style="background:${scoreColor(score)}">${score}%</div>
           <div class="score-detail">
-            <strong>Match score</strong> — requirements covered vs. the listing.
+            <strong>Profile match</strong> — how well your experience fits this role.
             ${covered ? `<div class="chips">${covered}</div>` : ""}
-            ${missing ? `<div class="chips"><span class="chip">Gaps to confirm:</span>${missing}</div>` : ""}
+            ${missing ? `<div class="chips"><span class="chip gap-label">Gaps to confirm</span>${missing}</div>` : ""}
           </div>
         </div>`;
         addMsg(html, "bot");
@@ -495,9 +495,26 @@
               <div><strong>Location:</strong> ${esc(a.location || "Not specified")}</div>
               <p>${esc(a.summary || "No summary available.")}</p>
               <div class="application-downloads">${files}</div>
+              <button class="delete-application" type="button" data-folder="${esc(a.folder)}">Delete application</button>
             </div>
           </details>`;
         appList.appendChild(li);
+      });
+      appList.querySelectorAll(".delete-application").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const folder = button.dataset.folder;
+          if (!folder || !confirm("Delete this application and its PDF files?")) return;
+          button.disabled = true;
+          try {
+            const res = await fetch(`/api/applications/${encodeURIComponent(folder)}`, { method: "DELETE" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Delete failed");
+            await loadApplications();
+          } catch (err) {
+            button.disabled = false;
+            alert(err.message);
+          }
+        });
       });
     } catch {
       appList.innerHTML = "<li class='muted'>unavailable</li>";

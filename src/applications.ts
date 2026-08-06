@@ -106,3 +106,23 @@ export async function saveApplication(
 
   return appFiles;
 }
+
+export async function deleteApplication(folder: string): Promise<boolean> {
+  const index = await readIndex();
+  const record = index.find((application) => application.folder === folder);
+  if (!record) return false;
+
+  const applicationDir = path.join(config.APPLICATIONS_DIR, folder);
+  const relative = path.relative(config.APPLICATIONS_DIR, applicationDir);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Invalid application folder");
+  }
+
+  await fs.rm(applicationDir, { recursive: true, force: true });
+  await fs.writeFile(
+    path.join(config.APPLICATIONS_DIR, INDEX_FILE),
+    JSON.stringify(index.filter((application) => application.folder !== folder), null, 2),
+    "utf8",
+  );
+  return true;
+}
