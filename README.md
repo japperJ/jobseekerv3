@@ -1,11 +1,36 @@
 # Jobseeker v3
 
-A local web chat assistant that turns a job listing into tailored CV and cover-letter PDFs in English and Danish.
+A local web chat assistant that turns a job listing into tailored CV and cover-letter PDFs in English and Danish, with evidence-backed review before anything is saved.
 
 Jobseeker v3 is a free, open-source local tool for quickly creating
-tailored, ATS-friendly job applications from a pasted job listing. It runs on
-the user's computer and keeps candidate knowledge and generated applications
-local.
+tailored, ATS-friendly job applications from pasted listing text or a job URL.
+It runs on the user's computer and keeps candidate knowledge, prompts, and
+generated applications local.
+
+## What it can do
+
+- **Analyze listings:** paste full text or a URL, preview the extracted listing,
+  and see extraction-quality warnings before analysis.
+- **Review requirements:** compare each requirement with your knowledge using
+  independent **Yes**, **Partial**, **No**, **Uncertain**, or **Not relevant**
+  verdicts. Add notes and apply the complete set of verdicts in one step.
+- **Close knowledge gaps:** answer focused interview questions for uncertain or
+  missing requirements and approve evidence before it is appended to your local
+  knowledge.
+- **Generate applications:** create English and Danish CVs plus English and
+  Danish cover letters tailored to the listing.
+- **Check PDFs:** run deterministic document preflight checks for required
+  sections and document type. Applications remain drafts until every document
+  passes.
+- **Edit the workflow:** update the five knowledge Markdown files and six
+  user-facing LLM prompts from the sidebar. Prompt templates are validated,
+  persisted under `knowledge/prompts/`, and can be reset to defaults; protected
+  identity and safety rules remain non-editable.
+- **Inspect AI activity:** view the prompt, response, model, duration, and errors
+  in the optional LLM thinking trace panel.
+- **Use Copilot models:** select from the GitHub Copilot models available to the
+  logged-in account. The app uses the GitHub Copilot SDK and does not require an
+  OpenCode runtime.
 
 ## Screenshot
 
@@ -68,7 +93,8 @@ npm run build
 npm start
 ```
 
-Open <http://localhost:4173>.
+Open <http://localhost:4173> (or the port configured in `.env`, such as
+`http://localhost:4175`).
 
 Useful environment variables are documented in `.env.example`, including `PORT`, `COPILOT_MODEL`, `COPILOT_CLI_PATH`, and `KNOWLEDGE_DIR`.
 
@@ -76,9 +102,10 @@ The sidebar model selector lists the Copilot models available to the logged-in
 account. Changing it applies to the next analysis, interview, or document
 generation request; `COPILOT_MODEL` remains the startup default.
 
-Expanded knowledge files can be edited directly in the sidebar. Click **Save
-changes** to write the Markdown file locally; the updated content is used by
-the next job analysis or document generation request.
+Knowledge files and LLM prompts can be edited directly in the sidebar. Click
+**Save changes** or **Save prompt** to write them locally; the updated content
+is used by the next relevant request. Use **Reset default** to restore any
+editable prompt.
 
 ## Configuration
 
@@ -98,6 +125,10 @@ Generated files are written to `applications/`, which is also excluded from Git:
 - Danish CV PDF
 - English cover-letter PDF
 - Danish application PDF
+
+Each application also stores its listing, review decisions, confirmed evidence,
+and preflight report. The sidebar marks an application as **Draft** or
+**Sendable** and provides download links for the PDFs and report.
 
 ## License
 
