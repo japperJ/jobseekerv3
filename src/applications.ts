@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { config } from "./config.js";
-import type { ApplicationFiles, JobInfo } from "./types.js";
+import type { ApplicationFiles, ApplicationPreflightReport, ApplicationStatus, JobInfo } from "./types.js";
 
 export interface ApplicationRecord extends ApplicationFiles {
   company: string;
@@ -10,6 +10,8 @@ export interface ApplicationRecord extends ApplicationFiles {
   date: string;
   score: number;
   summary: string;
+  status: ApplicationStatus;
+  preflightFile: string | null;
 }
 
 const INDEX_FILE = "index.json";
@@ -41,13 +43,16 @@ export async function readIndex(): Promise<ApplicationRecord[]> {
 
 /**
  * Persists a completed application: job description + 4 PDFs in a dedicated
- * folder, plus an entry in index.json.
+ * folder, plus an entry in index.json. The deterministic PDF preflight
+ * report is persisted alongside the files and drives the draft/sendable
+ * status recorded in the index — it must run before this is called.
  */
 export async function saveApplication(
   job: JobInfo,
   jobDescriptionText: string,
   files: { cvEn: string; cvDa: string; coverEn: string; coverDa: string },
   score: number,
+  preflight?: ApplicationPreflightReport,
 ): Promise<ApplicationFiles> {
   const folder = applicationFolderName(job);
   const dir = path.join(config.APPLICATIONS_DIR, folder);
@@ -59,9 +64,16 @@ export async function saveApplication(
     coverEn: "Cover_Letter_English.pdf",
     coverDa: "Ansoegning_Dansk.pdf",
     jobDescription: "job-description.md",
+    preflight: "preflight-report.json",
   };
 
   await fs.writeFile(path.join(dir, names.jobDescription), jobDescriptionText, "utf8");
+
+  let preflightFile: string | null = null;
+  if (preflight) {
+    preflightFile = path.join(dir, names.preflight);
+    await fs.writeFile(preflightFile, JSON.stringify(preflight, null, 2), "utf8");
+  }
 
   const appFiles: ApplicationFiles = {
     folder,
@@ -91,6 +103,8 @@ export async function saveApplication(
     date: new Date().toISOString(),
     score,
     summary: job.summary,
+    status: preflight?.status ?? "draft",
+    preflightFile,
   };
 
   const index = await readIndex();

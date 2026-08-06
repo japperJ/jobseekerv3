@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Jobseeker v2 — CV & Cover Letter Assistant</title>
+  <title>Jobseeker v3 — CV & Cover Letter Assistant</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -14,7 +14,7 @@
       <div class="brand">
         <div class="brand-logo">JS</div>
         <div>
-          <h1>Jobseeker v2</h1>
+          <h1>Jobseeker v3</h1>
           <p class="tagline">Tailored CV & cover letters</p>
         </div>
       </div>
@@ -39,6 +39,12 @@
         <ul class="file-list" id="knowledgeList"><li class="muted">Loading…</li></ul>
       </section>
 
+      <section class="panel">
+        <h2>LLM prompts</h2>
+        <p class="model-help">Tune the workflow prompts used for new requests. Core safety rules stay protected.</p>
+        <ul class="file-list" id="promptList"><li class="muted">Loading…</li></ul>
+      </section>
+
       <section class="panel grow">
         <h2>Applications</h2>
         <ul class="file-list" id="appList"><li class="muted">Loading…</li></ul>
@@ -60,11 +66,13 @@
             👋 Hej! I'm your job application assistant.
             <br /><br />
             Paste the full <strong>job listing text</strong> for the best analysis. You can also paste a
-            <strong>job URL</strong>, but some requirements may be hidden or unavailable on the page.
-            I'll compare the requirements against everything I know about you and ask about any gaps,
-            save your answers permanently, and produce a <strong>CV + cover letter</strong> in
-            <strong>Danish and English</strong> — formatted so both human recruiters and AI
-            screeners pick it out.
+            <strong>job URL</strong> — I'll show you exactly what was extracted (with a quality check)
+            before analyzing anything, so you can fix the company/title/location or cancel.
+            I'll compare the requirements against everything I know about you, ask about any gaps, and
+            let you <strong>review and approve</strong> anything before it's saved to your knowledge
+            folder permanently. Then I'll produce a <strong>CV + cover letter</strong> in
+            <strong>Danish and English</strong> — with a deterministic preflight check before it's
+            marked ready to send.
           </div>
         </div>
       </div>

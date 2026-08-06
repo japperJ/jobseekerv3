@@ -1,10 +1,14 @@
 import type { JobInfo, JobRequirement } from "./types.js";
+import {
+  loadPromptTemplate,
+  renderPrompt,
+  type EditablePromptId,
+} from "./prompt-settings.js";
 
 /**
- * System prompts and message builders used to drive the Copilot assistant.
- * Kept in one place so the agent's behavior is easy to tune.
+ * Protected system rules. These are intentionally not user-editable because
+ * they prevent unsupported claims from being invented.
  */
-
 export const SYSTEM_IDENTITY = `You are Jobseeker, a personal job-application assistant. You help the candidate turn any job listing into a tailored, ATS-safe CV and cover letter.
 
 Rules:
@@ -16,9 +20,6 @@ Rules:
 
 export const SYSTEM_TONE = `Be direct, confident, and helpful. Respond in the same language the user writes in (Danish for Danish users/companies, English otherwise). Keep chat messages short and friendly.`;
 
-/**
- * Builds a system message for a Copilot session used for structured analysis.
- */
 export function analysisSystemMessage(): Record<string, unknown> {
   return {
     mode: "customize",
@@ -32,20 +33,17 @@ export function analysisSystemMessage(): Record<string, unknown> {
   };
 }
 
-/**
- * Prompt asking Copilot to extract structured requirements from a job listing.
- */
-export function analyzeListingPrompt(listing: string, knowledgeText: string): string {
-  return `You are analyzing a job listing to help a job seeker understand requirements.
+export const DEFAULT_PROMPT_TEMPLATES: Record<EditablePromptId, string> = {
+  "analyze-listing": `You are analyzing a job listing to help a job seeker understand requirements.
 
 ## Job listing
 """
-${listing}
+{{listing}}
 """
 
 ## The candidate's known profile (for reference only — do NOT add requirements from here)
 """
-${knowledgeText}
+{{knowledge}}
 """
 
 Extract the following and respond with a SINGLE valid JSON object (no markdown fences, no commentary):
@@ -66,26 +64,16 @@ Extract the following and respond with a SINGLE valid JSON object (no markdown f
 Rules:
 - Extract 5 to 20 requirements. Prefer concrete, checkable items (technologies, tools, certs, years of experience, specific tasks).
 - Keep the wording close to the listing so keyword matching against the candidate profile works.
-- Do not invent requirements.`;
-}
-
-/**
- * Prompt asking Copilot to score the match between requirements and the profile.
- */
-export function matchPrompt(
-  requirements: JobRequirement[],
-  knowledgeText: string,
-): string {
-  const reqList = requirements.map((r, i) => `${i + 1}. ${r.text}`).join("\n");
-  return `You are scoring how well a candidate's known profile covers a job's requirements.
+- Do not invent requirements.`,
+  "match-requirements": `You are scoring how well a candidate's known profile covers a job's requirements.
 
 ## Candidate profile
 """
-${knowledgeText}
+{{knowledge}}
 """
 
 ## Job requirements
-${reqList}
+{{requirements}}
 
 For each requirement, decide whether the candidate's profile demonstrates it.
 - "yes": clearly demonstrated (skill, experience, or evidence in profile)
@@ -99,36 +87,16 @@ Respond with a SINGLE valid JSON object (no markdown fences):
   ]
 }
 
-Use zero-based requirement indices exactly as listed above: the first requirement is index 0, the second is index 1, and so on.`;
-}
+Use zero-based requirement indices exactly as listed above: the first requirement is index 0, the second is index 1, and so on.`,
+  "interview-question": `You are interviewing a job seeker to confirm whether they have a specific requirement for a job.
 
-/**
- * Prompt that generates the interview question for a single gap.
- */
-export function interviewQuestionPrompt(
-  requirement: JobRequirement,
-  job: JobInfo,
-  idx: number,
-  total: number,
-): string {
-  return `You are interviewing a job seeker to confirm whether they have a specific requirement for a job.
+Job: {{jobRole}} at {{company}}
+Requirement ({{index}}/{{total}}): "{{requirement}}"
 
-Job: ${job.role} at ${job.company ?? "the company"}
-Requirement (${idx}/${total}): "${requirement.text}"
+Write ONE short, natural chat question (max 40 words) that asks whether the candidate has this exact knowledge/experience and invites them to briefly describe evidence (what they did, where, with what result). Keep it friendly and specific, referencing the requirement wording. Respond with only the question text, no quotes.`,
+  "interpret-answer": `The job seeker was asked whether they have this requirement: "{{requirement}}".
 
-Write ONE short, natural chat question (max 40 words) that asks whether the candidate has this exact knowledge/experience and invites them to briefly describe evidence (what they did, where, with what result). Keep it friendly and specific, referencing the requirement wording. Respond with only the question text, no quotes.`;
-}
-
-/**
- * Prompt that interprets a user's answer to an interview question.
- */
-export function interpretAnswerPrompt(
-  requirement: JobRequirement,
-  userAnswer: string,
-): string {
-  return `The job seeker was asked whether they have this requirement: "${requirement.text}".
-
-Their answer: """${userAnswer}"""
+Their answer: """{{answer}}"""
 
 Decide whether they confirmed having this knowledge/experience (yes), clearly said no (no), or were ambiguous (unsure).
 Respond with a SINGLE valid JSON object (no markdown fences):
@@ -136,36 +104,21 @@ Respond with a SINGLE valid JSON object (no markdown fences):
   "has": true | false,
   "unsure": true | false,
   "evidence": "A concise factual statement of what they actually did, based ONLY on their answer. Empty string if unsure."
-}`;
-}
-
-/**
- * Prompt that generates the CV + cover letter markdown (both languages).
- */
-export function generateDocumentsPrompt(
-  job: JobInfo,
-  knowledgeText: string,
-  confirmedAnswers: string[],
-): string {
-  const answersBlock =
-    confirmedAnswers.length > 0
-      ? confirmedAnswers.map((a) => `- ${a}`).join("\n")
-      : "- (none)";
-
-  return `Generate a tailored job application for the following job.
+}`,
+  "generate-documents": `Generate a tailored job application for the following job.
 
 ## Job
-Company: ${job.company ?? "Unknown"}
-Role: ${job.role}
-Location: ${job.location ?? "Unknown"}
-Summary: ${job.summary}
-Requirements: ${job.requirements.map((r) => r.text).join(" | ")}
+Company: {{company}}
+Role: {{role}}
+Location: {{location}}
+Summary: {{summary}}
+Requirements: {{requirements}}
 
 ## Candidate knowledge
-${knowledgeText}
+{{knowledge}}
 
 ## Additional confirmed during interview
-${answersBlock}
+{{confirmed}}
 
 Produce FOUR markdown documents, separated by exactly one line of "---". In order:
 
@@ -202,12 +155,63 @@ CRITICAL OUTPUT RULES:
 - The Danish CV must be a full translation, not "identical to the English one" — write it out completely.
 - Do not use "---" (horizontal rules) inside a document. Use it only between the four documents.
 
-Markdown rules: use ONLY standard headings (##), bullets (-), and plain paragraphs. No tables, no emoji, no images, no HTML. Keep the first line of each document a clear title.`;
+Markdown rules: use ONLY standard headings (##), bullets (-), and plain paragraphs. No tables, no emoji, no images, no HTML. Keep the first line of each document a clear title.`,
+  "idle-chat": `The job seeker sent: """{{message}}"""
+
+This does not look like a job listing. Reply in 1–2 short sentences telling them to paste a job listing (or a URL to one) so you can analyze it and build a tailored CV and cover letter.`,
+};
+
+async function editable(id: EditablePromptId, values: Record<string, string>): Promise<string> {
+  const template = await loadPromptTemplate(id, DEFAULT_PROMPT_TEMPLATES[id]);
+  return renderPrompt(template, values);
 }
 
-/** Short chat acknowledgment used when the assistant is idle. */
-export function idleChatPrompt(userMessage: string): string {
-  return `The job seeker sent: """${userMessage}"""
+export async function analyzeListingPrompt(listing: string, knowledgeText: string): Promise<string> {
+  return editable("analyze-listing", { listing, knowledge: knowledgeText });
+}
 
-This does not look like a job listing. Reply in 1–2 short sentences telling them to paste a job listing (or a URL to one) so you can analyze it and build a tailored CV and cover letter.`;
+export async function matchPrompt(requirements: JobRequirement[], knowledgeText: string): Promise<string> {
+  return editable("match-requirements", {
+    requirements: requirements.map((r, i) => `${i + 1}. ${r.text}`).join("\n"),
+    knowledge: knowledgeText,
+  });
+}
+
+export async function interviewQuestionPrompt(
+  requirement: JobRequirement,
+  job: JobInfo,
+  idx: number,
+  total: number,
+): Promise<string> {
+  return editable("interview-question", {
+    jobRole: job.role,
+    company: job.company ?? "the company",
+    index: String(idx),
+    total: String(total),
+    requirement: requirement.text,
+  });
+}
+
+export async function interpretAnswerPrompt(requirement: JobRequirement, userAnswer: string): Promise<string> {
+  return editable("interpret-answer", { requirement: requirement.text, answer: userAnswer });
+}
+
+export async function generateDocumentsPrompt(
+  job: JobInfo,
+  knowledgeText: string,
+  confirmedAnswers: string[],
+): Promise<string> {
+  return editable("generate-documents", {
+    company: job.company ?? "Unknown",
+    role: job.role,
+    location: job.location ?? "Unknown",
+    summary: job.summary,
+    requirements: job.requirements.map((r) => r.text).join(" | "),
+    knowledge: knowledgeText,
+    confirmed: confirmedAnswers.length > 0 ? confirmedAnswers.map((a) => `- ${a}`).join("\n") : "- (none)",
+  });
+}
+
+export async function idleChatPrompt(userMessage: string): Promise<string> {
+  return editable("idle-chat", { message: userMessage });
 }

@@ -73,9 +73,13 @@ export class CopilotManager {
     client: CopilotClient,
     opts: RunOptions,
   ): Promise<CopilotSession> {
+    const selectedModel = (opts.model ?? this.selectedModel ?? config.COPILOT_MODEL).toLowerCase();
+    // The UI uses provider-qualified IDs to prevent third-party models from
+    // appearing, while the Copilot SDK session API expects the bare model ID.
+    const sdkModel = selectedModel.replace(/^github-copilot\//, "");
     return client.createSession({
       onPermissionRequest: approveAll,
-      model: (opts.model ?? this.selectedModel ?? config.COPILOT_MODEL).toLowerCase(),
+      model: sdkModel,
       clientName: "jobseeker-v2",
       workingDirectory: PROJECT_ROOT,
       systemMessage: opts.systemMessage,
@@ -170,7 +174,15 @@ export class CopilotManager {
     const client = await this.getClient();
     const models = await client.listModels();
     return models
-      .map((model) => model.id.toLowerCase())
+      .map((model) => {
+        const id = model.id.toLowerCase();
+        // SDK versions may expose first-party Copilot IDs without a provider
+        // prefix; normalize those to the canonical ID used by this app.
+        return id.includes("/") ? id : `github-copilot/${id}`;
+      })
+      // Exclude every explicitly routed third-party provider, especially
+      // `opencode/*`.
+      .filter((id) => id.startsWith("github-copilot/"))
       .filter((id, index, all) => all.indexOf(id) === index)
       .sort();
   }
@@ -182,6 +194,9 @@ export class CopilotManager {
   setModel(model: string): void {
     const normalized = model.trim().toLowerCase();
     if (!normalized) throw new Error("Model name cannot be empty");
+    if (!normalized.startsWith("github-copilot/")) {
+      throw new Error("Only GitHub Copilot models can be selected");
+    }
     this.selectedModel = normalized;
   }
 

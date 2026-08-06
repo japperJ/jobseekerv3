@@ -1,4 +1,4 @@
-/* Jobseeker v2 chat client */
+/* Jobseeker v3 chat client */
 (function () {
   "use strict";
 
@@ -15,6 +15,7 @@
   const statusDot = document.getElementById("statusDot");
   const statusText = document.getElementById("statusText");
   const knowledgeList = document.getElementById("knowledgeList");
+  const promptList = document.getElementById("promptList");
   const appList = document.getElementById("appList");
   const themeToggle = document.getElementById("themeToggle");
 
@@ -36,8 +37,8 @@
   });
 
   const SIDEBAR_MIN = 240;
-  const SIDEBAR_MAX = 520;
-  const savedSidebarWidth = Number(localStorage.getItem("jsv2-sidebar-width"));
+  const SIDEBAR_MAX = 1040;
+  const savedSidebarWidth = Number(localStorage.getItem("jsv3-sidebar-width"));
   if (Number.isFinite(savedSidebarWidth) && savedSidebarWidth >= SIDEBAR_MIN && savedSidebarWidth <= SIDEBAR_MAX) {
     document.documentElement.style.setProperty("--sidebar-width", `${savedSidebarWidth}px`);
   }
@@ -61,7 +62,7 @@
     resizeHandle.releasePointerCapture(event.pointerId);
     document.body.style.userSelect = "";
     const width = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width"), 10);
-    localStorage.setItem("jsv2-sidebar-width", String(width));
+    localStorage.setItem("jsv3-sidebar-width", String(width));
   });
   resizeHandle.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
@@ -72,7 +73,7 @@
       Math.min(SIDEBAR_MAX, current + (event.key === "ArrowRight" ? 16 : -16)),
     );
     document.documentElement.style.setProperty("--sidebar-width", `${next}px`);
-    localStorage.setItem("jsv2-sidebar-width", String(next));
+    localStorage.setItem("jsv3-sidebar-width", String(next));
   });
 
  const COMPOSER_MIN = 44;
@@ -117,8 +118,8 @@
   const traceBody = document.getElementById("traceBody");
   const traceClearBtn = document.getElementById("traceClearBtn");
   const TRACE_MIN = 280;
-  const TRACE_MAX = 620;
-  const savedTraceWidth = Number(localStorage.getItem("jsv2-trace-width"));
+  const TRACE_MAX = 1240;
+  const savedTraceWidth = Number(localStorage.getItem("jsv3-trace-width"));
   if (Number.isFinite(savedTraceWidth) && savedTraceWidth >= TRACE_MIN && savedTraceWidth <= TRACE_MAX) {
     document.documentElement.style.setProperty("--trace-width", `${savedTraceWidth}px`);
   }
@@ -174,7 +175,7 @@
     traceResizeHandle.onpointerup = () => {
       traceResizeHandle.classList.remove("active");
       traceResizeHandle.onpointermove = null;
-      localStorage.setItem("jsv2-trace-width", getComputedStyle(document.documentElement).getPropertyValue("--trace-width").trim().replace("px", ""));
+      localStorage.setItem("jsv3-trace-width", getComputedStyle(document.documentElement).getPropertyValue("--trace-width").trim().replace("px", ""));
     };
   });
   if (appEl.classList.contains("trace-open")) connectTrace();
@@ -209,6 +210,7 @@
     div.appendChild(bubble);
     messagesEl.appendChild(div);
     scrollBottom();
+    return div;
   }
 
   function addBot(text) { addMsg(renderMd(text), "bot"); }
@@ -234,35 +236,169 @@
   }
 
   // ── Response renderers ──────────────────────────────────
+  function verdictBadge(v) {
+    const map = {
+      yes: ["good", "Yes"],
+      partial: ["warn", "Partial"],
+      no: ["bad", "No"],
+      uncertain: ["warn", "Uncertain"],
+      not_relevant: ["muted", "Not relevant"],
+    };
+    const [cls, label] = map[v] || ["warn", v];
+    return `<span class="verdict-badge verdict-${cls}">${label}</span>`;
+  }
+
+  function sourceLabel(source) {
+    return {
+      model: "Model",
+      fallback_keyword: "Keyword fallback",
+      knowledge_match: "Knowledge match",
+      user_override: "Your override",
+    }[source] || source;
+  }
+
+  function renderMatrixTable(matrix, editable) {
+    if (!matrix || !matrix.length) return "";
+    const rows = matrix
+      .map((row) => {
+        const a = row.assessment;
+        const override = editable
+          ? `<div class="matrix-override">
+              <label>Set verdict
+                <select class="review-verdict" data-index="${row.index}">
+                  ${["yes", "partial", "no", "uncertain", "not_relevant"].map((v) => `<option value="${v}" ${a.verdict === v ? "selected" : ""}>${v.replace("_", " ")}</option>`).join("")}
+                </select>
+              </label>
+              <input class="review-note" data-index="${row.index}" type="text" placeholder="Optional note" value="${esc(a.overrideNote || "")}">
+            </div>`
+          : "";
+        return `<tr>
+          <td>${esc(row.requirement.text)}</td>
+          <td>${verdictBadge(a.verdict)}</td>
+          <td class="muted-cell">${esc(sourceLabel(a.source))} · ${esc(a.confidence)}${override}</td>
+          <td class="muted-cell">${esc(a.reason || "")}${a.evidenceQuote ? `<br><em>${esc(a.evidenceQuote)}</em>` : ""}</td>
+        </tr>`;
+      })
+      .join("");
+    return `<div class="matrix-wrap"><table class="matrix-table">
+      <thead><tr><th>Requirement</th><th>Verdict</th><th>Provenance</th><th>Reason / evidence</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }
+
   function renderResponse(res) {
     switch (res.type) {
       case "chat":
         addBot(res.message);
         break;
 
-      case "analysis": {
+      case "listingPreview": {
+        const p = res.preview || {};
+        const qualityClass = { good: "good", fair: "warn", poor: "bad" }[p.quality] || "warn";
+        const warnings = (p.warnings || []).map((w) => `<li>${esc(w)}</li>`).join("");
+        const g = p.guess || {};
         let html = renderMd(res.message || "");
-        const score = res.score ?? 0;
-        const covered = (res.covered || []).map((s) => `<span class="chip good">${esc(s)}</span>`).join("");
-        const missing = (res.missing || []).map((s) => `<span class="chip warn">${esc(s)}</span>`).join("");
-        html += `<div class="score-card">
-          <div class="score-ring" style="background:${scoreColor(score)}">${score}%</div>
-          <div class="score-detail">
-            <strong>Profile match</strong> — how well your experience fits this role.
-            ${covered ? `<div class="chips">${covered}</div>` : ""}
-            ${missing ? `<div class="chips"><span class="chip gap-label">Gaps to confirm</span>${missing}</div>` : ""}
+        html += `<div class="preview-card">
+          <div class="preview-quality"><span class="verdict-badge verdict-${qualityClass}">Extraction: ${esc(p.quality || "unknown")}</span> <span class="muted-cell">${esc(p.url || "")}</span></div>
+          ${warnings ? `<ul class="preview-warnings">${warnings}</ul>` : ""}
+          <div class="preview-fields">
+            <label>Company <input type="text" class="preview-company" value="${esc(g.company || "")}" placeholder="unknown"></label>
+            <label>Title <input type="text" class="preview-title" value="${esc(g.title || "")}" placeholder="unknown"></label>
+            <label>Location <input type="text" class="preview-location" value="${esc(g.location || "")}" placeholder="unknown"></label>
+          </div>
+          <details class="preview-text-details">
+            <summary>Exact extracted text (${(p.text || "").length.toLocaleString()} characters)</summary>
+            <textarea class="preview-text" readonly rows="10">${esc(p.text || "")}</textarea>
+          </details>
+          <div class="quick-actions">
+            <button class="btn btn-primary btn-small preview-confirm">✅ Confirm & analyze</button>
+            <button class="btn btn-ghost btn-small preview-cancel">✖ Cancel</button>
           </div>
         </div>`;
-        addMsg(html, "bot");
-        addQuickActions([
-          { label: "Yes, I have this", value: "Yes, I have this experience" },
-          { label: "No, I don't", value: "No, I don't have this" },
-        ]);
+        const div = document.createElement("div");
+        div.className = "msg bot";
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.innerHTML = html;
+        div.appendChild(bubble);
+        messagesEl.appendChild(div);
+        scrollBottom();
+
+        bubble.querySelector(".preview-confirm")?.addEventListener("click", async () => {
+          const company = bubble.querySelector(".preview-company")?.value || "";
+          const title = bubble.querySelector(".preview-title")?.value || "";
+          const location = bubble.querySelector(".preview-location")?.value || "";
+          busy = true;
+          setStatus("Thinking…", "busy");
+          const typing = addTyping();
+          try {
+            const r = await fetch("/api/listing/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ clientId, company, title, location }),
+            });
+            const data = await r.json();
+            typing.remove();
+            renderResponse(data);
+            setStatus("Ready", "on");
+          } catch (err) {
+            typing.remove();
+            addMsg(`<div style="color:var(--bad)">⚠️ ${esc(err.message)}</div>`, "bot");
+          } finally {
+            busy = false;
+          }
+        });
+        bubble.querySelector(".preview-cancel")?.addEventListener("click", async () => {
+          await fetch("/api/listing/cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId }),
+          });
+          addBot("Discarded. Paste a job listing or a URL to start over.");
+        });
+        break;
+      }
+
+      case "analysis": {
+        let html = renderMd(res.message || "");
+        const coverage = res.coverage || { percentage: res.score ?? 0, coveredCount: (res.covered || []).length, totalCount: (res.covered || []).length + (res.missing || []).length };
+        html += `<div class="score-card">
+          <div class="score-ring" style="background:${scoreColor(coverage.percentage)}">${coverage.percentage}%</div>
+          <div class="score-detail">
+            <strong>Profile coverage</strong> — ${coverage.coveredCount}/${coverage.totalCount} listed requirements addressed. Not an ATS pass/fail prediction.
+          </div>
+        </div>`;
+        html += `<p class="review-help">Set each requirement independently below. For example: Terraform = Yes, Kubernetes = No, Stakeholder = Yes.</p>`;
+        html += renderMatrixTable(res.matrix, true);
+        html += `<div class="quick-actions"><button class="btn btn-primary btn-small analysis-apply">✅ Use these verdicts</button></div>`;
+        const analysisMessage = addMsg(html, "bot");
+        analysisMessage.querySelector(".analysis-apply")?.addEventListener("click", async (event) => {
+          const button = event.currentTarget;
+          button.disabled = true;
+          try {
+            const overrides = [...analysisMessage.querySelectorAll(".review-verdict")].map((select) => {
+              const index = Number(select.dataset.index);
+              const note = analysisMessage.querySelector(`.review-note[data-index="${select.dataset.index}"]`)?.value || "";
+              return { index, verdict: select.value, note };
+            });
+            const r = await fetch("/api/analysis/apply-verdicts", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ clientId, overrides }),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || "Could not apply verdicts");
+            renderResponse(data);
+          } catch (err) {
+            addMsg(`<div style="color:var(--bad)">⚠️ ${esc(err.message)}</div>`, "bot");
+            button.disabled = false;
+          }
+        });
         break;
       }
 
       case "question":
-        addBot(res.message || "");
+        addBot(`${res.message || ""}\n\n_Answer this requirement only. The next question will appear after your answer._`);
         addQuickActions([
           { label: "✅ Yes, I have this", value: "Yes, I have this experience" },
           { label: "❌ No, I don't", value: "No, I don't have this" },
@@ -273,15 +409,68 @@
         addBot(res.message || "");
         break;
 
+      case "review": {
+        let html = renderMd(res.message || "");
+        html += `<p class="review-help">Set each requirement's verdict independently. Choose <strong>Yes</strong> for the two requirements you have and <strong>No</strong> for the one you do not, then approve the selected knowledge items.</p>`;
+        html += renderMatrixTable(res.matrix, true);
+        const items = res.pendingKnowledge || [];
+        if (items.length) {
+          const rows = items
+            .map(
+              (it) => `<label class="pending-item">
+                <input type="checkbox" class="pending-checkbox" data-id="${esc(it.id)}" ${it.approved ? "checked" : ""}>
+                <span><strong>${esc(it.requirementText)}</strong>${it.evidence ? ` — ${esc(it.evidence)}` : ""}${it.context ? ` <span class="muted-cell">(${esc(it.context)})</span>` : ""}</span>
+              </label>`,
+            )
+            .join("");
+          html += `<div class="review-pending"><div class="review-pending-title">Save permanently to knowledge folder:</div>${rows}</div>`;
+        }
+        html += `<div class="quick-actions">
+          <button class="btn btn-primary btn-small review-approve">✅ Approve selected</button>
+          <button class="btn btn-ghost btn-small review-skip">Skip — don't save</button>
+        </div>`;
+        const div = document.createElement("div");
+        div.className = "msg bot";
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.innerHTML = html;
+        div.appendChild(bubble);
+        messagesEl.appendChild(div);
+        scrollBottom();
+
+        bubble.querySelector(".review-approve")?.addEventListener("click", async () => {
+          const approvals = [...bubble.querySelectorAll(".pending-checkbox")].map((cb) => ({
+            id: cb.dataset.id,
+            approved: cb.checked,
+          }));
+          const overrides = [...bubble.querySelectorAll(".review-verdict")].map((select) => {
+            const index = Number(select.dataset.index);
+            const note = bubble.querySelector(`.review-note[data-index="${select.dataset.index}"]`)?.value || "";
+            return { index, verdict: select.value, note };
+          });
+          const r = await fetch("/api/review/apply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId, approvals, overrides }),
+          });
+          const data = await r.json();
+          renderResponse(data);
+        });
+        bubble.querySelector(".review-skip")?.addEventListener("click", () => send("skip"));
+        break;
+      }
+
       case "ready": {
         let html = renderMd(res.message || "");
+        if (res.matrix) html += renderMatrixTable(res.matrix);
         html += `<div class="quick-actions"><button class="btn btn-primary btn-small" onclick="window.__jsv2Generate()">📄 Generate CV & cover letter PDFs</button></div>`;
         addMsg(html, "bot");
         break;
       }
 
       case "generated": {
-        addBot(res.message || "");
+        let html = renderMd(res.message || "");
+        addMsg(html, "bot");
         const files = res.files || {};
         const items = [
           ["CV (English)", files.cvEn],
@@ -294,6 +483,7 @@
           .map(([label, p]) => `<div class="download-item"><span>${esc(label)}</span><a href="/api/download/${p}" download>Download ↓</a></div>`)
           .join("");
         addMsg(`<div class="download-list">${list}</div>`, "bot");
+        loadApplications();
         break;
       }
 
@@ -449,12 +639,73 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: textarea.value }),
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not save file");
       status.textContent = "Saved";
       setTimeout(() => { status.textContent = ""; }, 2500);
     } catch (err) {
       status.textContent = `Save failed: ${err.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  async function loadPrompts() {
+    try {
+      const res = await fetch("/api/prompts");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "unavailable");
+      promptList.innerHTML = "";
+      (data.entries || []).forEach((entry) => {
+        const li = document.createElement("li");
+        li.className = "expandable-item";
+        li.innerHTML = `
+          <details>
+            <summary>
+              <span class="file-name">${esc(entry.title)}</span>
+              ${entry.customized ? '<span class="prompt-customized">edited</span>' : ""}
+            </summary>
+            <div class="knowledge-editor">
+              <p class="prompt-description">${esc(entry.description)}</p>
+              <p class="prompt-placeholders">Available: ${entry.placeholders.map((p) => `<code>${esc(p)}</code>`).join(" ")}</p>
+              <textarea class="knowledge-textarea prompt-textarea" data-prompt="${esc(entry.id)}">${esc(entry.content)}</textarea>
+              <button class="btn btn-primary btn-small prompt-save" data-prompt="${esc(entry.id)}">Save prompt</button>
+              <button class="btn btn-ghost btn-small prompt-reset" data-prompt="${esc(entry.id)}">Reset default</button>
+              <span class="save-status" aria-live="polite"></span>
+            </div>
+          </details>`;
+        promptList.appendChild(li);
+      });
+    } catch (err) {
+      promptList.innerHTML = `<li class="muted">${esc(err.message || "unavailable")}</li>`;
+    }
+  }
+
+  promptList.addEventListener("click", async (event) => {
+    const button = event.target.closest(".prompt-save, .prompt-reset");
+    if (!button) return;
+    const id = button.dataset.prompt;
+    const item = button.closest(".expandable-item");
+    const textarea = item?.querySelector(".prompt-textarea");
+    const status = item?.querySelector(".save-status");
+    if (!id || !textarea || !status) return;
+    button.disabled = true;
+    status.textContent = button.classList.contains("prompt-reset") ? "Resetting…" : "Saving…";
+    try {
+      const isReset = button.classList.contains("prompt-reset");
+      const res = await fetch(`/api/prompts/${encodeURIComponent(id)}${isReset ? "/reset" : ""}`, {
+        method: isReset ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: isReset ? undefined : JSON.stringify({ content: textarea.value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not update prompt");
+      if (isReset) textarea.value = data.content;
+      status.textContent = isReset ? "Reset" : "Saved";
+      setTimeout(() => { status.textContent = ""; }, 2500);
+    } catch (err) {
+      status.textContent = `Update failed: ${err.message}`;
     } finally {
       button.disabled = false;
     }
@@ -485,16 +736,22 @@
             `<a href="/api/download/applications/${encodeURIComponent(a.folder)}/${filename}" download>${label}</a>`,
           )
           .join("");
+        const statusBadge = a.status
+          ? `<span class="status-badge ${a.status === "sendable" ? "status-sendable" : "status-draft"}">${a.status === "sendable" ? "✅ Sendable" : "⚠️ Draft"}</span>`
+          : "";
+        const preflightLink = a.preflightFile
+          ? `<a href="/api/download/applications/${encodeURIComponent(a.folder)}/preflight-report.json" download>Preflight report</a>`
+          : "";
         li.innerHTML = `
           <details>
             <summary>
-              <span class="file-name">${esc(a.role)}</span><br>
-              <span class="file-meta">${esc(a.company)} · ${d} · match ${a.score}%</span>
+              <span class="file-name">${esc(a.role)}</span> ${statusBadge}<br>
+              <span class="file-meta">${esc(a.company)} · ${d} · coverage ${a.score}%</span>
             </summary>
             <div class="application-content">
               <div><strong>Location:</strong> ${esc(a.location || "Not specified")}</div>
               <p>${esc(a.summary || "No summary available.")}</p>
-              <div class="application-downloads">${files}</div>
+              <div class="application-downloads">${files}${preflightLink}</div>
               <button class="delete-application" type="button" data-folder="${esc(a.folder)}">Delete application</button>
             </div>
           </details>`;
@@ -547,6 +804,7 @@
   // ── Init ────────────────────────────────────────────────
   async function init() {
     loadKnowledge();
+    loadPrompts();
     loadApplications();
     loadModels();
     try {

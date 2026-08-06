@@ -5,4 +5,5 @@ dist/
 /knowledge/
 .impeccable/
 .playwright-mcp/
+.tmp-test-scratch/
 *.log

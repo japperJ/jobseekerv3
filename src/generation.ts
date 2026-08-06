@@ -14,7 +14,7 @@ export async function generateApplicationDocuments(
   onChunk?: (chunk: string) => void,
   onTrace?: (event: import("./copilot.js").TraceEvent) => void,
 ): Promise<GeneratedDocuments> {
-  const basePrompt = generateDocumentsPrompt(job, knowledgeText, confirmedEvidence);
+  const basePrompt = await generateDocumentsPrompt(job, knowledgeText, confirmedEvidence);
   let docs: DocumentSections = {};
   let missing: string[] = [];
 
