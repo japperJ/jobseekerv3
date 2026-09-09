@@ -28,9 +28,9 @@ generated applications local.
   identity and safety rules remain non-editable.
 - **Inspect AI activity:** view the prompt, response, model, duration, and errors
   in the optional LLM thinking trace panel.
-- **Use Copilot models:** select from the GitHub Copilot models available to the
-  logged-in account. The app uses the GitHub Copilot SDK and does not require an
-  OpenCode runtime.
+- **Choose an LLM provider:** run on GitHub Copilot models through the Copilot
+  SDK, or on any model opencode exposes. Switch provider and model from the
+  sidebar without restarting.
 
 ## Screenshot
 
@@ -83,7 +83,8 @@ The application may append confirmed skills to `knowledge/skills.md` after an in
 
 ## Setup
 
-Requirements: Node.js 22 or newer and GitHub Copilot CLI access.
+Requirements: Node.js 22 or newer, plus at least one LLM backend — GitHub
+Copilot CLI access (default) or an [opencode](https://opencode.ai) runtime.
 
 ```powershell
 npm install
@@ -108,6 +109,31 @@ Knowledge files and LLM prompts can be edited directly in the sidebar. Click
 **Save changes** or **Save prompt** to write them locally; the updated content
 is used by the next relevant request. Use **Reset default** to restore any
 editable prompt.
+
+## LLM providers
+
+All AI work goes through a small provider layer, so the app is not tied to one
+backend. Two providers ship with it:
+
+| Provider | Prefix | Backend |
+| --- | --- | --- |
+| GitHub Copilot | `github-copilot` | `@github/copilot-sdk`, using the logged-in Copilot CLI |
+| opencode | `opencode` | `@opencode-ai/sdk`, attaching to a running server or spawning one |
+
+Set the startup model in `.env` as `<provider>/<model>`:
+
+```text
+LLM_MODEL=github-copilot/gpt-5.6-luna
+# or
+LLM_MODEL=opencode/anthropic/claude-sonnet-4.5
+```
+
+By default opencode spawns its own local server. To attach to one you already
+run, set `OPENCODE_BASE_URL` (for example `http://127.0.0.1:4096`);
+`OPENCODE_AGENT` selects the agent. The sidebar model selector lists every
+available model grouped by provider, and switching applies to the next request.
+
+See [ADR 0001](docs/adr/0001-llm-provider-abstraction.md) for the design.
 
 ## Configuration
 
