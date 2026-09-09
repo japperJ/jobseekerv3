@@ -1,4 +1,4 @@
-import type { TraceEvent } from "./copilot.js";
+import type { TraceEvent } from "./llm/types.js";
 
 export interface TraceRun {
   id: string;

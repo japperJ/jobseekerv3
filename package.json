@@ -9,10 +9,11 @@
     "start": "node dist/index.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/*.test.ts"
+    "test": "tsx --test src/*.test.ts src/llm/*.test.ts"
   },
   "dependencies": {
     "@github/copilot-sdk": "^1.0.8",
+    "@opencode-ai/sdk": "^1.18.30",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
     "marked": "^17.0.5",

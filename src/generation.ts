@@ -1,5 +1,5 @@
-import type { CopilotManager } from "./copilot.js";
-import { generateDocumentsPrompt, analysisSystemMessage } from "./prompts.js";
+import type { LlmManager, TraceEvent } from "./llm/index.js";
+import { generateDocumentsPrompt, analysisSystemPrompt } from "./prompts.js";
 import type { GeneratedDocuments, JobInfo } from "./types.js";
 
 /**
@@ -10,9 +10,9 @@ export async function generateApplicationDocuments(
   job: JobInfo,
   knowledgeText: string,
   confirmedEvidence: string[],
-  manager: CopilotManager,
+  manager: LlmManager,
   onChunk?: (chunk: string) => void,
-  onTrace?: (event: import("./copilot.js").TraceEvent) => void,
+  onTrace?: (event: TraceEvent) => void,
 ): Promise<GeneratedDocuments> {
   const basePrompt = await generateDocumentsPrompt(job, knowledgeText, confirmedEvidence);
   let docs: DocumentSections = {};
@@ -26,7 +26,7 @@ export async function generateApplicationDocuments(
 
     const raw = await manager.run({
       prompt,
-      systemMessage: analysisSystemMessage() as never,
+      systemPrompt: analysisSystemPrompt(),
       timeoutMs: 240_000,
       onChunk,
       label: `Generate documents${attempt ? " (retry)" : ""}`,

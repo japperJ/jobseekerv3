@@ -5,42 +5,41 @@ import {
   type CopilotSession,
   type SystemMessageConfig,
 } from "@github/copilot-sdk";
-import { config, PROJECT_ROOT } from "./config.js";
+import { config, PROJECT_ROOT } from "../config.js";
+import {
+  qualifyModel,
+  stripProvider,
+  type LlmProvider,
+  type LlmRunOptions,
+  type TraceEvent,
+} from "./types.js";
 
-export interface RunOptions {
-  prompt: string;
-  systemMessage?: SystemMessageConfig;
-  timeoutMs?: number;
-  /** Called with streaming text chunks as the assistant replies. */
-  onChunk?: (chunk: string) => void;
-  model?: string;
-  label?: string;
-  onTrace?: (event: TraceEvent) => void;
-}
-
-export interface TraceEvent {
-  kind: "run-start" | "run-end" | "run-error";
-  label?: string;
-  model?: string;
-  timestamp: number;
-  prompt?: string;
-  durationMs?: number;
-  finalText?: string;
-  error?: string;
-}
+const PROVIDER_ID = "github-copilot";
 
 /**
- * Thin wrapper around the GitHub Copilot SDK.
+ * GitHub Copilot provider, backed by the Copilot SDK.
  *
  * Each `run()` creates a fresh short-lived session, sends one prompt, and
  * collects the final assistant message. Sessions are cheap and stateless here —
  * the app owns conversation state, so no session resumption is needed.
  */
-export class CopilotManager {
+export class CopilotProvider implements LlmProvider {
+  readonly id = PROVIDER_ID;
+
   private client: CopilotClient | null = null;
   private starting = false;
   private startPromise: Promise<CopilotClient> | null = null;
   private selectedModel: string | null = null;
+
+  /**
+   * @param defaultModel canonical model ID used until one is selected.
+   * @param clientFactory overrides how the SDK client is created; tests use it
+   *   to inject a stub instead of spawning the Copilot CLI.
+   */
+  constructor(
+    private readonly defaultModel: string = config.LLM_MODEL,
+    private readonly clientFactory?: () => Promise<CopilotClient>,
+  ) {}
 
   private async getClient(): Promise<CopilotClient> {
     if (this.client) return this.client;
@@ -53,6 +52,10 @@ export class CopilotManager {
     if (this.starting) return this.getClient();
     this.starting = true;
     try {
+      if (this.clientFactory) {
+        this.client = await this.clientFactory();
+        return this.client;
+      }
       // Default: use the runtime bundled with the SDK (@github/copilot).
       // If COPILOT_CLI_PATH is set (e.g. a global copilot install), use that.
       const client = new CopilotClient({
@@ -69,20 +72,31 @@ export class CopilotManager {
     }
   }
 
+  /** Translates a plain-text system prompt into Copilot's `SystemMessageConfig`. */
+  private toSystemMessage(systemPrompt: string | undefined): SystemMessageConfig | undefined {
+    if (!systemPrompt) return undefined;
+    return {
+      mode: "customize",
+      sections: {
+        identity: { action: "replace", content: systemPrompt },
+      },
+    };
+  }
+
   private async buildSession(
     client: CopilotClient,
-    opts: RunOptions,
+    opts: LlmRunOptions,
   ): Promise<CopilotSession> {
-    const selectedModel = (opts.model ?? this.selectedModel ?? config.COPILOT_MODEL).toLowerCase();
-    // The UI uses provider-qualified IDs to prevent third-party models from
-    // appearing, while the Copilot SDK session API expects the bare model ID.
-    const sdkModel = selectedModel.replace(/^github-copilot\//, "");
+    const canonical = (opts.model ?? this.getModel()).toLowerCase();
+    // The UI uses provider-qualified IDs, while the Copilot SDK session API
+    // expects the bare model ID.
+    const sdkModel = stripProvider(canonical, PROVIDER_ID);
     return client.createSession({
       onPermissionRequest: approveAll,
       model: sdkModel,
       clientName: "jobseeker-v2",
       workingDirectory: PROJECT_ROOT,
-      systemMessage: opts.systemMessage,
+      systemMessage: this.toSystemMessage(opts.systemPrompt),
       // No tools: this app generates text only; all file I/O happens server-side.
       tools: [],
       excludedTools: [],
@@ -93,7 +107,7 @@ export class CopilotManager {
    * Runs a single prompt to completion and returns the final assistant text.
    * Retries once with a fresh client if the connection fails.
    */
-  async run(opts: RunOptions): Promise<string> {
+  async run(opts: LlmRunOptions): Promise<string> {
     const client = await this.getClient();
     try {
       return await this.runOnce(client, opts);
@@ -112,9 +126,10 @@ export class CopilotManager {
     }
   }
 
-  private async runOnce(client: CopilotClient, opts: RunOptions): Promise<string> {
+  private async runOnce(client: CopilotClient, opts: LlmRunOptions): Promise<string> {
     const session = await this.buildSession(client, opts);
     const startedAt = Date.now();
+    const model = (opts.model ?? this.getModel()).toLowerCase();
     const emit = (event: Omit<TraceEvent, "timestamp">): void => {
       try {
         opts.onTrace?.({ ...event, timestamp: Date.now() });
@@ -122,20 +137,18 @@ export class CopilotManager {
         /* A trace sink must never break an LLM request. */
       }
     };
-    emit({
-      kind: "run-start",
-      label: opts.label,
-      model: (opts.model ?? this.selectedModel ?? config.COPILOT_MODEL).toLowerCase(),
-      prompt: opts.prompt,
-    });
+    emit({ kind: "run-start", label: opts.label, model, prompt: opts.prompt });
     try {
       let unsubscribe: (() => void) | undefined;
       if (opts.onChunk) {
+        // Copilot emits whole messages, not deltas: forward only the new suffix.
+        let emitted = 0;
         unsubscribe = session.on("assistant.message", (event) => {
           const content = event?.data?.content;
-          if (typeof content === "string" && content.length > 0) {
-            opts.onChunk?.(content);
-          }
+          if (typeof content !== "string" || content.length <= emitted) return;
+          const delta = content.slice(emitted);
+          emitted = content.length;
+          if (delta) opts.onChunk?.(delta);
         });
       }
       const result = await session.sendAndWait(
@@ -144,12 +157,13 @@ export class CopilotManager {
       );
       if (unsubscribe) unsubscribe();
       const finalText = result?.data?.content ?? "";
-      emit({ kind: "run-end", label: opts.label, durationMs: Date.now() - startedAt, finalText });
+      emit({ kind: "run-end", label: opts.label, model, durationMs: Date.now() - startedAt, finalText });
       return finalText;
     } catch (err) {
       emit({
         kind: "run-error",
         label: opts.label,
+        model,
         durationMs: Date.now() - startedAt,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -178,24 +192,24 @@ export class CopilotManager {
         const id = model.id.toLowerCase();
         // SDK versions may expose first-party Copilot IDs without a provider
         // prefix; normalize those to the canonical ID used by this app.
-        return id.includes("/") ? id : `github-copilot/${id}`;
+        return id.includes("/") ? id : qualifyModel(PROVIDER_ID, id);
       })
       // Exclude every explicitly routed third-party provider, especially
       // `opencode/*`.
-      .filter((id) => id.startsWith("github-copilot/"))
+      .filter((id) => id.startsWith(`${PROVIDER_ID}/`))
       .filter((id, index, all) => all.indexOf(id) === index)
       .sort();
   }
 
   getModel(): string {
-    return (this.selectedModel ?? config.COPILOT_MODEL).toLowerCase();
+    return (this.selectedModel ?? this.defaultModel).toLowerCase();
   }
 
   setModel(model: string): void {
     const normalized = model.trim().toLowerCase();
     if (!normalized) throw new Error("Model name cannot be empty");
-    if (!normalized.startsWith("github-copilot/")) {
-      throw new Error("Only GitHub Copilot models can be selected");
+    if (!normalized.startsWith(`${PROVIDER_ID}/`)) {
+      throw new Error(`Only ${PROVIDER_ID} models can be selected`);
     }
     this.selectedModel = normalized;
   }

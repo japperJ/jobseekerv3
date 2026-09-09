@@ -20,17 +20,17 @@ Rules:
 
 export const SYSTEM_TONE = `Be direct, confident, and helpful. Respond in the same language the user writes in (Danish for Danish users/companies, English otherwise). Keep chat messages short and friendly.`;
 
-export function analysisSystemMessage(): Record<string, unknown> {
-  return {
-    mode: "customize",
-    sections: {
-      identity: {
-        action: "replace",
-        content: `${SYSTEM_IDENTITY}\n\nYou are currently performing STRUCTURED JOB ANALYSIS.`,
-      },
-      tone: { action: "replace", content: SYSTEM_TONE },
-    },
-  };
+/**
+ * Provider-neutral system instructions for the analysis/interview/generation
+ * calls. Providers translate this plain text into their own system-message
+ * shape, so it must not contain provider-specific structure.
+ */
+export function analysisSystemPrompt(): string {
+  return [
+    SYSTEM_IDENTITY,
+    "You are currently performing STRUCTURED JOB ANALYSIS.",
+    SYSTEM_TONE,
+  ].join("\n\n");
 }
 
 export const DEFAULT_PROMPT_TEMPLATES: Record<EditablePromptId, string> = {

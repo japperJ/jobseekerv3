@@ -784,15 +784,26 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "unavailable");
       modelSelect.innerHTML = "";
-      (data.models || []).forEach((model) => {
-        const option = document.createElement("option");
-        option.value = model;
-        option.textContent = model;
-        option.selected = model === data.current;
-        modelSelect.appendChild(option);
+      const groups = Array.isArray(data.providers) && data.providers.length
+        ? data.providers
+        : [{ id: "", models: data.models || [] }];
+      groups.forEach((group) => {
+        const parent = group.id ? document.createElement("optgroup") : modelSelect;
+        if (group.id) {
+          parent.label = group.id;
+          modelSelect.appendChild(parent);
+        }
+        (group.models || []).forEach((model) => {
+          const option = document.createElement("option");
+          option.value = model;
+          option.textContent = group.id ? model.slice(group.id.length + 1) : model;
+          option.selected = model === data.current;
+          parent.appendChild(option);
+        });
       });
-      modelSelect.disabled = (data.models || []).length === 0;
-      if ((data.models || []).length === 0) {
+      const total = (data.models || []).length;
+      modelSelect.disabled = total === 0;
+      if (total === 0) {
         modelSelect.innerHTML = "<option>No models available</option>";
       }
     } catch {
