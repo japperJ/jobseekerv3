@@ -96,11 +96,13 @@ npm start
 Open <http://localhost:4173> (or the port configured in `.env`, such as
 `http://localhost:4175`).
 
-Useful environment variables are documented in `.env.example`, including `PORT`, `COPILOT_MODEL`, `COPILOT_CLI_PATH`, and `KNOWLEDGE_DIR`.
+Useful environment variables are documented in `.env.example`, including `PORT`, `LLM_MODEL`, `LLM_PROVIDER`, `COPILOT_CLI_PATH`, `OPENCODE_BASE_URL`, and `KNOWLEDGE_DIR`.
 
-The sidebar model selector lists the Copilot models available to the logged-in
-account. Changing it applies to the next analysis, interview, or document
-generation request; `COPILOT_MODEL` remains the startup default.
+The sidebar model selector lists the models available to the configured
+providers, grouped by provider. Changing it applies to the next analysis,
+interview, or document generation request; `LLM_MODEL` remains the startup
+default. Model IDs are written as `<provider>/<model>` — for example
+`github-copilot/gpt-5.6-luna` or `opencode/anthropic/claude-sonnet-4.5`.
 
 Knowledge files and LLM prompts can be edited directly in the sidebar. Click
 **Save changes** or **Save prompt** to write them locally; the updated content
@@ -129,6 +131,10 @@ Generated files are written to `applications/`, which is also excluded from Git:
 Each application also stores its listing, review decisions, confirmed evidence,
 and preflight report. The sidebar marks an application as **Draft** or
 **Sendable** and provides download links for the PDFs and report.
+
+## Architecture decisions
+
+- [ADR 0001 — Pluggable LLM providers (GitHub Copilot + opencode)](docs/adr/0001-llm-provider-abstraction.md)
 
 ## License
 

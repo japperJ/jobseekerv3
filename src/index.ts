@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import express from "express";
 import { config, PROJECT_ROOT } from "./config.js";
-import { CopilotManager, type TraceEvent } from "./copilot.js";
+import { createLlmManager, type LlmManager, type TraceEvent } from "./llm/index.js";
 import { TraceStore } from "./trace.js";
 import {
   loadAllKnowledge,
@@ -37,7 +37,7 @@ const app = express();
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(PROJECT_ROOT, "src", "public")));
 
-const manager = new CopilotManager();
+const manager: LlmManager = createLlmManager();
 const clients = new Map<string, ClientState>();
 const traces = new TraceStore();
 
@@ -579,16 +579,27 @@ async function handleMessage(clientId: string, userMessage: string): Promise<Mes
 // ── Routes ────────────────────────────────────────────────────────────────
 
 app.get("/api/health", async (_req, res) => {
-  res.json({ ok: true, copilot: await manager.health() });
+  const providers = await manager.healthByProvider();
+  res.json({
+    ok: true,
+    // Kept for backwards compatibility with older clients.
+    copilot: providers["github-copilot"] ?? false,
+    providers,
+  });
 });
 
 app.get("/api/models", async (_req, res) => {
   try {
-    res.json({ models: await manager.listModels(), current: manager.getModel() });
+    const providers = await manager.listModelsByProvider();
+    res.json({
+      models: providers.flatMap((group) => group.models),
+      providers,
+      current: manager.getModel(),
+    });
   } catch (err) {
     console.error("❌ /api/models error:", err);
     res.status(503).json({
-      error: `Unable to list Copilot models: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Unable to list models: ${err instanceof Error ? err.message : String(err)}`,
       current: manager.getModel(),
     });
   }
@@ -606,8 +617,8 @@ app.post("/api/model", async (req, res) => {
     res.json({ current: manager.getModel() });
   } catch (err) {
     console.error("❌ /api/model error:", err);
-    res.status(503).json({
-      error: `Unable to change Copilot model: ${err instanceof Error ? err.message : String(err)}`,
+    res.status(400).json({
+      error: `Unable to change model: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 });
@@ -885,7 +896,7 @@ app.listen(config.PORT, () => {
   console.log(`✅ Jobseeker v2 running at http://localhost:${config.PORT}`);
   console.log(`   Knowledge folder: ${config.KNOWLEDGE_DIR}`);
   console.log(`   Applications folder: ${config.APPLICATIONS_DIR}`);
-  console.log(`   Model: ${config.COPILOT_MODEL}`);
+  console.log(`   Model: ${config.LLM_MODEL}`);
 });
 
 process.on("SIGINT", async () => {

@@ -1,5 +1,5 @@
-import type { CopilotManager } from "./copilot.js";
-import { interviewQuestionPrompt, interpretAnswerPrompt, analysisSystemMessage } from "./prompts.js";
+import type { JsonSchema, LlmManager, TraceEvent } from "./llm/index.js";
+import { interviewQuestionPrompt, interpretAnswerPrompt, analysisSystemPrompt } from "./prompts.js";
 import type { JobInfo, JobRequirement } from "./types.js";
 
 export interface InterpretedAnswer {
@@ -8,19 +8,31 @@ export interface InterpretedAnswer {
   evidence: string;
 }
 
+/** Shape the answer interpreter must return. */
+const INTERPRETED_ANSWER_SCHEMA: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["has", "unsure", "evidence"],
+  properties: {
+    has: { type: "boolean" },
+    unsure: { type: "boolean" },
+    evidence: { type: "string" },
+  },
+};
+
 /** Generates the chat question for one missing requirement. */
 export async function askGapQuestion(
   requirement: JobRequirement,
   job: JobInfo,
   idx: number,
   total: number,
-  manager: CopilotManager,
-  onTrace?: (event: import("./copilot.js").TraceEvent) => void,
+  manager: LlmManager,
+  onTrace?: (event: TraceEvent) => void,
 ): Promise<string> {
   try {
     const text = await manager.run({
       prompt: await interviewQuestionPrompt(requirement, job, idx, total),
-      systemMessage: analysisSystemMessage() as never,
+      systemPrompt: analysisSystemPrompt(),
       timeoutMs: 60_000,
       label: "Ask gap question",
       onTrace,
@@ -39,13 +51,14 @@ export async function askGapQuestion(
 export async function interpretAnswer(
   requirement: JobRequirement,
   userAnswer: string,
-  manager: CopilotManager,
-  onTrace?: (event: import("./copilot.js").TraceEvent) => void,
+  manager: LlmManager,
+  onTrace?: (event: TraceEvent) => void,
 ): Promise<InterpretedAnswer> {
   try {
     const raw = await manager.run({
       prompt: await interpretAnswerPrompt(requirement, userAnswer),
-      systemMessage: analysisSystemMessage() as never,
+      systemPrompt: analysisSystemPrompt(),
+      jsonSchema: INTERPRETED_ANSWER_SCHEMA,
       timeoutMs: 60_000,
       label: "Interpret interview answer",
       onTrace,

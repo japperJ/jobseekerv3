@@ -1,11 +1,65 @@
-import type { CopilotManager } from "./copilot.js";
+import type { JsonSchema, LlmManager, TraceEvent } from "./llm/index.js";
 import {
   FALLBACK_KEYWORDS,
   FALLBACK_ROLE_PATTERN,
 } from "./fallback-config.js";
-import { analyzeListingPrompt, matchPrompt, analysisSystemMessage } from "./prompts.js";
+import { analyzeListingPrompt, matchPrompt, analysisSystemPrompt } from "./prompts.js";
 import { computeCoverage, makeAssessment } from "./requirement-review.js";
 import type { AnalysisResult, JobInfo, JobRequirement, MatchAssessment } from "./types.js";
+
+/**
+ * Shape the listing parser must return. Passed to providers that support
+ * structured output; providers that do not simply ignore it, so the regex
+ * fallback in {@link extractJson} still has to work.
+ */
+const JOB_INFO_SCHEMA: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["company", "role", "location", "summary", "requirements"],
+  properties: {
+    company: { type: ["string", "null"] },
+    role: { type: "string" },
+    location: { type: ["string", "null"] },
+    summary: { type: "string" },
+    requirements: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["text"],
+        properties: {
+          text: { type: "string" },
+          category: {
+            type: "string",
+            enum: ["hard_skill", "soft_skill", "experience", "certification", "education", "task"],
+          },
+        },
+      },
+    },
+  },
+};
+
+/** Shape the match scorer must return. */
+const MATCH_SCHEMA: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["assessments"],
+  properties: {
+    assessments: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["index", "verdict", "reason"],
+        properties: {
+          index: { type: "integer" },
+          verdict: { type: "string", enum: ["yes", "partial", "no", "uncertain", "not_relevant"] },
+          reason: { type: "string" },
+        },
+      },
+    },
+  },
+};
 
 /** Extracts the first JSON object from a model response (strips fences/wrappers). */
 export function extractJson<T>(text: string): T {
@@ -102,14 +156,15 @@ function normalizeVerdict(value: unknown): MatchAssessment["verdict"] {
 export async function analyzeJobListing(
   listing: string,
   knowledgeText: string,
-  manager: CopilotManager,
-  onTrace?: (event: import("./copilot.js").TraceEvent) => void,
+  manager: LlmManager,
+  onTrace?: (event: TraceEvent) => void,
 ): Promise<AnalysisResult> {
   let job: JobInfo;
   try {
     const parseRaw = await manager.run({
       prompt: await analyzeListingPrompt(listing, knowledgeText),
-      systemMessage: analysisSystemMessage() as never,
+      systemPrompt: analysisSystemPrompt(),
+      jsonSchema: JOB_INFO_SCHEMA,
       timeoutMs: 120_000,
       label: "Parse job listing",
       onTrace,
@@ -144,7 +199,8 @@ export async function analyzeJobListing(
   try {
     const matchRaw = await manager.run({
       prompt: await matchPrompt(job.requirements, knowledgeText),
-      systemMessage: analysisSystemMessage() as never,
+      systemPrompt: analysisSystemPrompt(),
+      jsonSchema: MATCH_SCHEMA,
       timeoutMs: 120_000,
       label: "Score job match",
       onTrace,
