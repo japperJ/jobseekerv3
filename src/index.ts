@@ -589,20 +589,15 @@ app.get("/api/health", async (_req, res) => {
 });
 
 app.get("/api/models", async (_req, res) => {
-  try {
-    const providers = await manager.listModelsByProvider();
-    res.json({
-      models: providers.flatMap((group) => group.models),
-      providers,
-      current: manager.getModel(),
-    });
-  } catch (err) {
-    console.error("❌ /api/models error:", err);
-    res.status(503).json({
-      error: `Unable to list models: ${err instanceof Error ? err.message : String(err)}`,
-      current: manager.getModel(),
-    });
+  const providers = await manager.listModelsByProvider();
+  for (const group of providers) {
+    if (group.error) console.error(`❌ ${group.id} model list failed: ${group.error}`);
   }
+  res.json({
+    models: providers.flatMap((group) => group.models),
+    providers,
+    current: manager.getModel(),
+  });
 });
 
 app.post("/api/model", async (req, res) => {

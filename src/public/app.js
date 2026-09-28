@@ -806,7 +806,18 @@
       if (total === 0) {
         modelSelect.innerHTML = "<option>No models available</option>";
       }
-    } catch {
+      // A provider that could not be reached reports why; surface it instead of
+      // leaving the user staring at a silently empty group.
+      const failed = (data.providers || []).filter((group) => group.error);
+      failed.forEach((group) => {
+        console.error(`${group.id} model list failed: ${group.error}`);
+        const option = document.createElement("option");
+        option.textContent = `${group.id} unavailable`;
+        option.disabled = true;
+        modelSelect.appendChild(option);
+      });
+    } catch (err) {
+      console.error("Model list unavailable:", err);
       modelSelect.innerHTML = "<option>Models unavailable</option>";
       modelSelect.disabled = true;
     }

@@ -27,7 +27,7 @@ export interface LlmRunOptions {
   /**
    * Plain-text system instructions. Providers translate this into whatever
    * shape their backend expects (Copilot: a `SystemMessageConfig`; opencode:
-   * the `system` field on `session.prompt`).
+   * prepended to the prompt text, since its v2 API has no system field).
    */
   systemPrompt?: string;
   timeoutMs?: number;

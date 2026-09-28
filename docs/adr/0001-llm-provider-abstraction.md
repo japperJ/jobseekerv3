@@ -112,6 +112,13 @@ collide.
 
 ### opencode SDK mapping
 
+> **Superseded in part (2026-09-28).** The table below describes the **v1** opencode HTTP
+> API. The `opencode` CLI is now at **v2**, which serves its API only under `/api/*` and
+> returns the SPA HTML for every legacy path, and it requires HTTP Basic auth on every
+> request. The v1 calls in this table therefore fail against a current server. The table
+> that replaced it is in [ADR 0002](0002-opencode-v2-api.md); this one is kept as the
+> original record.
+
 Verified against <https://dev.opencode.ai/docs/sdk/>:
 
 | Capability | opencode SDK call |

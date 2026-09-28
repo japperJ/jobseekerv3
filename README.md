@@ -97,13 +97,13 @@ npm start
 Open <http://localhost:4173> (or the port configured in `.env`, such as
 `http://localhost:4175`).
 
-Useful environment variables are documented in `.env.example`, including `PORT`, `LLM_MODEL`, `LLM_PROVIDER`, `COPILOT_CLI_PATH`, `OPENCODE_BASE_URL`, and `KNOWLEDGE_DIR`.
+Useful environment variables are documented in `.env.example`, including `PORT`, `LLM_MODEL`, `LLM_PROVIDER`, `COPILOT_CLI_PATH`, `OPENCODE_BIN`, `OPENCODE_BASE_URL`, `OPENCODE_PASSWORD`, and `KNOWLEDGE_DIR`.
 
 The sidebar model selector lists the models available to the configured
 providers, grouped by provider. Changing it applies to the next analysis,
 interview, or document generation request; `LLM_MODEL` remains the startup
 default. Model IDs are written as `<provider>/<model>` — for example
-`github-copilot/gpt-5.6-luna` or `opencode/anthropic/claude-sonnet-4.5`.
+`github-copilot/gpt-5.6-luna` or `opencode/opencode-go/space-bunny-free`.
 
 Knowledge files and LLM prompts can be edited directly in the sidebar. Click
 **Save changes** or **Save prompt** to write them locally; the updated content
@@ -118,22 +118,72 @@ backend. Two providers ship with it:
 | Provider | Prefix | Backend |
 | --- | --- | --- |
 | GitHub Copilot | `github-copilot` | `@github/copilot-sdk`, using the logged-in Copilot CLI |
-| opencode | `opencode` | `@opencode-ai/sdk`, attaching to a running server or spawning one |
+| opencode | `opencode` | direct HTTP client against the opencode server API, spawning one or attaching to a running server |
 
 Set the startup model in `.env` as `<provider>/<model>`:
 
 ```text
 LLM_MODEL=github-copilot/gpt-5.6-luna
 # or
-LLM_MODEL=opencode/anthropic/claude-sonnet-4.5
+LLM_MODEL=opencode/opencode-go/space-bunny-free
 ```
 
-By default opencode spawns its own local server. To attach to one you already
-run, set `OPENCODE_BASE_URL` (for example `http://127.0.0.1:4096`);
-`OPENCODE_AGENT` selects the agent. The sidebar model selector lists every
-available model grouped by provider, and switching applies to the next request.
+The opencode prefix is followed by the provider and model *inside* opencode, so
+opencode-hosted models are written `opencode/<providerID>/<modelID>` — for
+example `opencode/opencode-go/space-bunny-free` or
+`opencode/anthropic/claude-sonnet-4.5`. The full list comes from the connected
+opencode server, so it covers whatever that server is signed in to (OpenCode Go,
+OpenCode Zen, or any provider configured there).
 
-See [ADR 0001](docs/adr/0001-llm-provider-abstraction.md) for the design.
+By default the app spawns its own opencode server on `127.0.0.1:4096`. The
+server needs the `opencode` CLI on `PATH`; the app generates a random password
+for it, injects a tool-free `jobseeker` agent, and scopes sessions to a scratch
+directory so they do not appear in your own projects.
+
+If you have more than one opencode build installed, set `OPENCODE_BIN` to the
+one you want. The builds are not database-schema compatible with each other, and
+on Windows a bare `opencode` resolves via PATHEXT and can silently pick the wrong
+one — every prompt then fails with `opencode prompt failed: Unexpected server
+error`.
+
+To attach to a server you already run instead, set `OPENCODE_BASE_URL` and its
+Basic-auth password:
+
+```text
+OPENCODE_BASE_URL=http://127.0.0.1:4096
+OPENCODE_PASSWORD=<the server's password>
+```
+
+`OPENCODE_PASSWORD` falls back to `OPENCODE_SERVER_PASSWORD` and then to the
+`password` field in the CLI's `~/.config/opencode/service.json`, so a stock
+local setup usually needs neither. `OPENCODE_AGENT` overrides the agent.
+
+The sidebar model selector lists every available model grouped by provider, and
+switching applies to the next request. If a provider cannot be reached, its
+group is empty and `GET /api/models` returns the reason in that group's `error`
+field.
+
+Two things to know about the selector:
+
+- It is one long `<select>` sorted alphabetically, and the opencode group can hold
+  several hundred entries, so `opencode-go` models sit well down the list. Start
+  typing to jump to one.
+- The list is fetched **once per page load**, and on a cold start the opencode
+  server needs a few seconds to boot and load its model catalog. If you open the
+  app immediately after starting it, reload the page once the status shows
+  `Ready`.
+
+### Troubleshooting opencode
+
+| Symptom | Cause |
+| --- | --- |
+| `opencode prompt failed: Unexpected server error` | The app spawned a different opencode build than the one that owns the shared database. Set `OPENCODE_BIN`. Check the real cause in the opencode log (`~/.local/share/opencode/log/opencode.log`) — the app only sees the server's generic message. |
+| `The opencode server at … requires a password` | Attaching via `OPENCODE_BASE_URL` with no `OPENCODE_PASSWORD`/`OPENCODE_SERVER_PASSWORD` and no `password` in `~/.config/opencode/service.json`. |
+| opencode group missing from the selector | The server was still starting when the page loaded. Reload, or check `GET /api/health` for `providers.opencode`. |
+| `Request is not supported by this version of OpenCode Server` | A pre-2.0 opencode server; it does not expose the `/api` surface this app needs. Upgrade the CLI or point `OPENCODE_BIN` at a 2.x build. |
+
+See [ADR 0001](docs/adr/0001-llm-provider-abstraction.md) for the provider design and
+[ADR 0002](docs/adr/0002-opencode-v2-api.md) for the opencode API specifics.
 
 ## Configuration
 
@@ -161,6 +211,7 @@ and preflight report. The sidebar marks an application as **Draft** or
 ## Architecture decisions
 
 - [ADR 0001 — Pluggable LLM providers (GitHub Copilot + opencode)](docs/adr/0001-llm-provider-abstraction.md)
+- [ADR 0002 — opencode provider on the v2 API](docs/adr/0002-opencode-v2-api.md)
 
 ## License
 
