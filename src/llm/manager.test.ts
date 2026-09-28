@@ -110,8 +110,9 @@ test("a failing provider degrades to an empty model list instead of throwing", a
   const manager = new LlmManager({ providers: [broken, ok], defaultModel: "opencode/openai/gpt-5" });
 
   assert.deepEqual(await manager.listModels(), ["opencode/openai/gpt-5"]);
+  // The failing provider reports why it is empty, so the UI can say so.
   assert.deepEqual(await manager.listModelsByProvider(), [
-    { id: "github-copilot", models: [] },
+    { id: "github-copilot", models: [], error: "cli missing" },
     { id: "opencode", models: ["opencode/openai/gpt-5"] },
   ]);
 });

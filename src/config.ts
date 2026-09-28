@@ -23,9 +23,20 @@ const EnvSchema = z.object({
   /** @deprecated Use LLM_MODEL instead. */
   COPILOT_MODEL: z.string().min(1).optional(),
   COPILOT_CLI_PATH: z.string().optional(),
+  /**
+   * Path to the `opencode` executable. Needed when several opencode builds are
+   * installed: they use incompatible database schemas, and a bare `opencode`
+   * on Windows can resolve to the wrong one via PATHEXT.
+   */
+  OPENCODE_BIN: z.string().optional(),
   /** Base URL of an already-running opencode server; when unset, one is spawned. */
   OPENCODE_BASE_URL: z.string().optional(),
-  /** opencode agent to run prompts as; unset uses the server default. */
+  /**
+   * Password for the opencode server's HTTP Basic auth. Only needed when
+   * attaching via OPENCODE_BASE_URL; a spawned server gets a random one.
+   */
+  OPENCODE_PASSWORD: z.string().optional(),
+  /** opencode agent to run prompts as; unset uses the built-in tool-free agent. */
   OPENCODE_AGENT: z.string().optional(),
   KNOWLEDGE_DIR: z.string().default(path.join(PROJECT_ROOT, "knowledge")),
   APPLICATIONS_DIR: z.string().default(path.join(PROJECT_ROOT, "applications")),
@@ -72,6 +83,8 @@ export const config = {
   LLM_MODEL: configuredModel
     ? normalizeModelId(configuredModel, defaultProvider)
     : DEFAULT_MODEL,
+  OPENCODE_BIN: env.OPENCODE_BIN?.trim() || undefined,
   OPENCODE_BASE_URL: env.OPENCODE_BASE_URL?.trim().replace(/\/+$/, "") || undefined,
+  OPENCODE_PASSWORD: env.OPENCODE_PASSWORD?.trim() || undefined,
   OPENCODE_AGENT: env.OPENCODE_AGENT?.trim() || undefined,
 };

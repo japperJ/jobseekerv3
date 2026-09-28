@@ -7,6 +7,8 @@ import {
 export interface ProviderModels {
   id: string;
   models: string[];
+  /** Why the list is empty; absent when the provider answered. */
+  error?: string;
 }
 
 export interface LlmManagerOptions {
@@ -67,6 +69,7 @@ export class LlmManager {
 
   /** Canonical model IDs grouped by provider. Providers that fail report an empty list. */
   async listModelsByProvider(): Promise<ProviderModels[]> {
+    const ids = [...this.providers.keys()];
     const settled = await Promise.allSettled(
       [...this.providers.values()].map(async (provider) => ({
         id: provider.id,
@@ -76,7 +79,13 @@ export class LlmManager {
     return settled.map((result, index) =>
       result.status === "fulfilled"
         ? result.value
-        : { id: [...this.providers.values()][index].id, models: [] },
+        : {
+            id: ids[index],
+            models: [],
+            // Surfaced so the UI can say *why* a provider is empty instead of
+            // silently rendering an empty dropdown.
+            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          },
     );
   }
 

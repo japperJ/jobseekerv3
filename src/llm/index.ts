@@ -1,4 +1,4 @@
-import { config, PROJECT_ROOT } from "../config.js";
+import { config } from "../config.js";
 import { CopilotProvider } from "./copilot-provider.js";
 import { LlmManager } from "./manager.js";
 import { OpencodeProvider } from "./opencode-provider.js";
@@ -28,10 +28,11 @@ export function createLlmManager(): LlmManager {
     providers: [
       new CopilotProvider(defaultModelFor("github-copilot")),
       new OpencodeProvider({
+        bin: config.OPENCODE_BIN,
         baseUrl: config.OPENCODE_BASE_URL,
+        password: config.OPENCODE_PASSWORD,
         agent: config.OPENCODE_AGENT,
         defaultModel: defaultModelFor("opencode"),
-        directory: PROJECT_ROOT,
       }),
     ],
     defaultModel: config.LLM_MODEL,
