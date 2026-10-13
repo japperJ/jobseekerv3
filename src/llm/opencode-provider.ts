@@ -38,6 +38,9 @@ const DEFAULT_SPAWN_TIMEOUT_MS = 60_000;
  */
 const DEFAULT_READY_TIMEOUT_MS = 30_000;
 
+/** Allow a healthy server a short interval to populate models before accepting an empty catalog. */
+const DEFAULT_EMPTY_CATALOG_GRACE_MS = 5_000;
+
 /** How often the session transcript is polled while waiting for a reply. */
 const POLL_INTERVAL_MS = 400;
 
@@ -124,6 +127,8 @@ export interface OpencodeProviderOptions {
   spawnTimeoutMs?: number;
   /** How long to wait for the server to finish loading its model catalog. */
   readyTimeoutMs?: number;
+  /** How long to wait when the server is healthy but has no models. */
+  emptyCatalogGraceMs?: number;
   /** Overrides how the client is created; tests use it to inject a stub. */
   clientFactory?: (args: { baseUrl: string; password: string; directory: string }) => OpencodeClient;
   /** Overrides how a server process is started; tests use it to skip spawning. */
@@ -212,18 +217,33 @@ export class OpencodeProvider implements LlmProvider {
    */
   private async awaitReady(client: OpencodeClient): Promise<void> {
     const deadline = Date.now() + (this.options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
+    const emptyCatalogGraceMs = this.options.emptyCatalogGraceMs ?? DEFAULT_EMPTY_CATALOG_GRACE_MS;
+    let healthyEmptySince: number | null = null;
     for (;;) {
       try {
         if ((await client.listModels()).length > 0) return;
+        if (await client.health()) {
+          healthyEmptySince ??= Date.now();
+        } else {
+          healthyEmptySince = null;
+        }
       } catch {
         /* not listening yet */
+        healthyEmptySince = null;
       }
+      if (healthyEmptySince !== null && Date.now() - healthyEmptySince >= emptyCatalogGraceMs) return;
       if (Date.now() >= deadline) {
-        // Proceed anyway: an empty catalog is a legitimate state (no signed-in
-        // provider), and the caller's own error message will explain it.
+        // Proceed anyway: an empty catalog is legitimate when no provider is configured.
         return;
       }
-      await delay(500);
+      const remaining = Math.min(
+        POLL_INTERVAL_MS,
+        deadline - Date.now(),
+        healthyEmptySince === null
+          ? POLL_INTERVAL_MS
+          : emptyCatalogGraceMs - (Date.now() - healthyEmptySince),
+      );
+      await delay(Math.max(0, remaining));
     }
   }
 

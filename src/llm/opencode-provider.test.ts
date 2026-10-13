@@ -144,6 +144,17 @@ test("server readiness waits for the model catalog even after health turns true"
   assert.deepEqual(await provider.listModels(), ["opencode/opencode-go/space-bunny-free"]);
 });
 
+test("server readiness accepts a healthy server that has no configured models", async () => {
+  const provider = makeProvider(stubClient({ catalog: [], health: true }), {
+    readyTimeoutMs: 1000,
+    emptyCatalogGraceMs: 20,
+  });
+  const started = Date.now();
+
+  assert.deepEqual(await provider.listModels(), []);
+  assert.ok(Date.now() - started < 500, "an empty OpenCode catalog must not block other providers");
+});
+
 test("a spawned server is given a generated password, not a configured one", async () => {
   let seen = "";
   const provider = makeProvider(stubClient(), {
