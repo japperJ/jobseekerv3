@@ -23,8 +23,8 @@ const PROVIDER_ID = "opencode";
 /** opencode's server authenticates with HTTP Basic; the username is fixed. */
 const SERVER_USERNAME = "opencode";
 
-/** The opencode CLI default HTTP port. Used only when spawning a server. */
-const DEFAULT_PORT = 4096;
+/** Let the OS choose an available port so an existing OpenCode server cannot block startup. */
+const DEFAULT_PORT = 0;
 
 /**
  * opencode takes ~5-15s to boot on a cold start (Bun + config load + provider
@@ -137,6 +137,12 @@ interface SpawnedServer {
   close(): void;
 }
 
+type SpawnProcess = (
+  bin: string,
+  args: string[],
+  options: { shell: false; windowsHide: true; env: NodeJS.ProcessEnv },
+) => ChildProcess;
+
 export class OpencodeProvider implements LlmProvider {
   readonly id = PROVIDER_ID;
 
@@ -200,15 +206,14 @@ export class OpencodeProvider implements LlmProvider {
   }
 
   /**
-   * Waits until the server can actually answer questions. Without this the app
-   * reports the provider as down and shows an empty model dropdown on a
-   * perfectly healthy server that is still loading.
+   * Waits until the server's model catalog is loaded. The health endpoint can
+   * report healthy while the provider catalog is still empty, so health alone
+   * is not enough to declare the server ready.
    */
   private async awaitReady(client: OpencodeClient): Promise<void> {
     const deadline = Date.now() + (this.options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
     for (;;) {
       try {
-        if (await client.health()) return;
         if ((await client.listModels()).length > 0) return;
       } catch {
         /* not listening yet */
@@ -469,6 +474,8 @@ export async function spawnServer(options: {
   password: string;
   timeoutMs: number;
   port?: number;
+  /** Overrides process creation in tests. */
+  spawnProcess?: SpawnProcess;
 }): Promise<SpawnedServer> {
   const bin = options.bin ?? "opencode";
   const args = ["serve", "--hostname=127.0.0.1", `--port=${options.port ?? DEFAULT_PORT}`];
@@ -484,7 +491,7 @@ export async function spawnServer(options: {
     },
   };
 
-  const child: ChildProcess = spawn(bin, args, {
+  const child: ChildProcess = (options.spawnProcess ?? spawn)(bin, args, {
     shell: false,
     windowsHide: true,
     env: {

@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import type { ChildProcess } from "node:child_process";
 import { basicAuth, type OpencodeClient, type OpencodeMessage } from "./opencode-client.js";
-import { OpencodeProvider, buildPromptText } from "./opencode-provider.js";
+import { OpencodeProvider, buildPromptText, spawnServer } from "./opencode-provider.js";
 
 interface StubOptions {
   catalog?: Array<{ id: string; providerID: string; enabled?: boolean }>;
@@ -124,6 +127,23 @@ test("health reflects the server", async () => {
   assert.equal(await makeProvider(stubClient({ health: false })).health(), false);
 });
 
+test("server readiness waits for the model catalog even after health turns true", async () => {
+  const stub = stubClient();
+  let catalogRequests = 0;
+  stub.client = {
+    ...stub.client,
+    async listModels() {
+      catalogRequests += 1;
+      return catalogRequests === 1
+        ? []
+        : [{ providerID: "opencode-go", id: "space-bunny-free" }];
+    },
+  };
+  const provider = makeProvider(stub, { readyTimeoutMs: 1500 });
+
+  assert.deepEqual(await provider.listModels(), ["opencode/opencode-go/space-bunny-free"]);
+});
+
 test("a spawned server is given a generated password, not a configured one", async () => {
   let seen = "";
   const provider = makeProvider(stubClient(), {
@@ -172,6 +192,32 @@ test("basicAuth encodes the fixed opencode username", () => {
     basicAuth("s3cret"),
     `Basic ${Buffer.from("opencode:s3cret").toString("base64")}`,
   );
+});
+
+test("spawnServer asks the OS for a free port by default", async () => {
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  const child = Object.assign(new EventEmitter(), {
+    stdout,
+    stderr,
+    kill: () => true,
+  }) as unknown as ChildProcess;
+  let args: string[] = [];
+
+  const server = await spawnServer({
+    bin: "unused-opencode",
+    password: "test-password",
+    timeoutMs: 1000,
+    spawnProcess: (_bin, actualArgs) => {
+      args = actualArgs;
+      queueMicrotask(() => stdout.write("server listening on http://127.0.0.1:54321\n"));
+      return child;
+    },
+  });
+
+  assert.ok(args.includes("--port=0"), "a fixed default port can already be occupied by OpenCode");
+  assert.equal(server.url, "http://127.0.0.1:54321");
+  server.close();
 });
 
 test("run resolves an opencode-go model and returns the assistant text", async () => {
