@@ -23,8 +23,8 @@ const PROVIDER_ID = "opencode";
 /** opencode's server authenticates with HTTP Basic; the username is fixed. */
 const SERVER_USERNAME = "opencode";
 
-/** The opencode CLI default HTTP port. Used only when spawning a server. */
-const DEFAULT_PORT = 4096;
+/** Let the OS choose an available port so an existing OpenCode server cannot block startup. */
+const DEFAULT_PORT = 0;
 
 /**
  * opencode takes ~5-15s to boot on a cold start (Bun + config load + provider
@@ -37,6 +37,9 @@ const DEFAULT_SPAWN_TIMEOUT_MS = 60_000;
  * few seconds `/api/health` 404s and `/api/model` returns an empty catalog.
  */
 const DEFAULT_READY_TIMEOUT_MS = 30_000;
+
+/** Allow a healthy server a short interval to populate models before accepting an empty catalog. */
+const DEFAULT_EMPTY_CATALOG_GRACE_MS = 5_000;
 
 /** How often the session transcript is polled while waiting for a reply. */
 const POLL_INTERVAL_MS = 400;
@@ -124,6 +127,8 @@ export interface OpencodeProviderOptions {
   spawnTimeoutMs?: number;
   /** How long to wait for the server to finish loading its model catalog. */
   readyTimeoutMs?: number;
+  /** How long to wait when the server is healthy but has no models. */
+  emptyCatalogGraceMs?: number;
   /** Overrides how the client is created; tests use it to inject a stub. */
   clientFactory?: (args: { baseUrl: string; password: string; directory: string }) => OpencodeClient;
   /** Overrides how a server process is started; tests use it to skip spawning. */
@@ -136,6 +141,12 @@ interface SpawnedServer {
   url: string;
   close(): void;
 }
+
+type SpawnProcess = (
+  bin: string,
+  args: string[],
+  options: { shell: false; windowsHide: true; env: NodeJS.ProcessEnv },
+) => ChildProcess;
 
 export class OpencodeProvider implements LlmProvider {
   readonly id = PROVIDER_ID;
@@ -200,25 +211,39 @@ export class OpencodeProvider implements LlmProvider {
   }
 
   /**
-   * Waits until the server can actually answer questions. Without this the app
-   * reports the provider as down and shows an empty model dropdown on a
-   * perfectly healthy server that is still loading.
+   * Waits until the server's model catalog is loaded. The health endpoint can
+   * report healthy while the provider catalog is still empty, so health alone
+   * is not enough to declare the server ready.
    */
   private async awaitReady(client: OpencodeClient): Promise<void> {
     const deadline = Date.now() + (this.options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS);
+    const emptyCatalogGraceMs = this.options.emptyCatalogGraceMs ?? DEFAULT_EMPTY_CATALOG_GRACE_MS;
+    let healthyEmptySince: number | null = null;
     for (;;) {
       try {
-        if (await client.health()) return;
         if ((await client.listModels()).length > 0) return;
+        if (await client.health()) {
+          healthyEmptySince ??= Date.now();
+        } else {
+          healthyEmptySince = null;
+        }
       } catch {
         /* not listening yet */
+        healthyEmptySince = null;
       }
+      if (healthyEmptySince !== null && Date.now() - healthyEmptySince >= emptyCatalogGraceMs) return;
       if (Date.now() >= deadline) {
-        // Proceed anyway: an empty catalog is a legitimate state (no signed-in
-        // provider), and the caller's own error message will explain it.
+        // Proceed anyway: an empty catalog is legitimate when no provider is configured.
         return;
       }
-      await delay(500);
+      const remaining = Math.min(
+        POLL_INTERVAL_MS,
+        deadline - Date.now(),
+        healthyEmptySince === null
+          ? POLL_INTERVAL_MS
+          : emptyCatalogGraceMs - (Date.now() - healthyEmptySince),
+      );
+      await delay(Math.max(0, remaining));
     }
   }
 
@@ -469,6 +494,8 @@ export async function spawnServer(options: {
   password: string;
   timeoutMs: number;
   port?: number;
+  /** Overrides process creation in tests. */
+  spawnProcess?: SpawnProcess;
 }): Promise<SpawnedServer> {
   const bin = options.bin ?? "opencode";
   const args = ["serve", "--hostname=127.0.0.1", `--port=${options.port ?? DEFAULT_PORT}`];
@@ -484,7 +511,7 @@ export async function spawnServer(options: {
     },
   };
 
-  const child: ChildProcess = spawn(bin, args, {
+  const child: ChildProcess = (options.spawnProcess ?? spawn)(bin, args, {
     shell: false,
     windowsHide: true,
     env: {

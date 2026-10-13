@@ -135,10 +135,11 @@ example `opencode/opencode-go/space-bunny-free` or
 opencode server, so it covers whatever that server is signed in to (OpenCode Go,
 OpenCode Zen, or any provider configured there).
 
-By default the app spawns its own opencode server on `127.0.0.1:4096`. The
-server needs the `opencode` CLI on `PATH`; the app generates a random password
-for it, injects a tool-free `jobseeker` agent, and scopes sessions to a scratch
-directory so they do not appear in your own projects.
+By default the app spawns its own opencode server on an OS-assigned free port.
+This avoids conflicts with another OpenCode server already using port `4096`.
+The server needs the `opencode` CLI on `PATH`; the app generates a random
+password for it, injects a tool-free `jobseeker` agent, and scopes sessions to a
+scratch directory so they do not appear in your own projects.
 
 If you have more than one opencode build installed, set `OPENCODE_BIN` to the
 one you want. The builds are not database-schema compatible with each other, and
@@ -169,9 +170,9 @@ Two things to know about the selector:
   several hundred entries, so `opencode-go` models sit well down the list. Start
   typing to jump to one.
 - The list is fetched **once per page load**, and on a cold start the opencode
-  server needs a few seconds to boot and load its model catalog. If you open the
-  app immediately after starting it, reload the page once the status shows
-  `Ready`.
+  server needs a few seconds to boot and load its model catalog. The app waits
+  briefly for models; if the OpenCode group is still empty once the app is
+  `Ready`, check that OpenCode has a provider configured, then reload the page.
 
 ### Troubleshooting opencode
 
