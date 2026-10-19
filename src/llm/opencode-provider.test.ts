@@ -9,7 +9,7 @@ import { OpencodeProvider, buildPromptText, spawnServer } from "./opencode-provi
 interface StubOptions {
   catalog?: Array<{ id: string; providerID: string; enabled?: boolean }>;
   /** Assistant turns, in order. A turn without `finish` is "still streaming". */
-  turns?: Array<{ text: string; finish?: string }>;
+  turns?: Array<{ text: string; finish?: string; error?: OpencodeMessage["error"] }>;
   /** Text deltas pushed through the event stream. */
   deltas?: string[];
   createError?: Error;
@@ -78,6 +78,7 @@ function stubClient(options: StubOptions = {}): Stub {
           type: "assistant",
           id: "msg_assistant",
           ...(finished ? { finish: current.finish } : {}),
+          ...(finished && current.error ? { error: current.error } : {}),
           content: [{ type: "text", text: current.text } as const],
         },
       ] satisfies OpencodeMessage[];
@@ -312,6 +313,50 @@ test("a timeout interrupts the session", async () => {
     /timed out after 1ms/,
   );
   assert.deepEqual(stub.interrupted, ["ses_test"]);
+});
+
+test("a failed assistant turn is surfaced immediately, not as a timeout", async () => {
+  const stub = stubClient({
+    turns: [
+      {
+        text: "",
+        finish: "error",
+        error: { type: "provider.auth", status: 401, message: "This API key has expired." },
+      },
+    ],
+  });
+  const provider = makeProvider(stub);
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    () =>
+      provider.run({
+        prompt: "hi",
+        model: "opencode/opencode-go/space-bunny-free",
+        timeoutMs: 30_000,
+      }),
+    /opencode run failed: provider\.auth, HTTP 401: This API key has expired\./,
+  );
+  assert.ok(
+    Date.now() - startedAt < 5_000,
+    "a failed turn must fail fast instead of polling to the run deadline",
+  );
+  assert.deepEqual(stub.interrupted, [], "an already-finished turn needs no interrupt");
+});
+
+test("a finished turn with no text fails fast instead of polling to the deadline", async () => {
+  const stub = stubClient({ turns: [{ text: "", finish: "stop" }] });
+  const provider = makeProvider(stub);
+
+  await assert.rejects(
+    () =>
+      provider.run({
+        prompt: "hi",
+        model: "opencode/opencode-go/space-bunny-free",
+        timeoutMs: 30_000,
+      }),
+    /finished without any text \(finish: stop\)/,
+  );
 });
 
 test("buildPromptText inlines the system prompt and any JSON schema", () => {
