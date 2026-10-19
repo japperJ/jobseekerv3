@@ -308,6 +308,11 @@ export class OpencodeProvider implements LlmProvider {
    * Polling (rather than waiting on the event stream) keeps the final text
    * correct even when the stream is missed, and `session.wait` is not available
    * on every server build.
+   *
+   * A turn can also finish *unsuccessfully* — e.g. a `provider.auth` 401 when
+   * the provider's API key is expired. Such a turn is finished but has no text,
+   * so it must be surfaced immediately instead of being polled until the
+   * deadline (which would report a misleading timeout minutes later).
    */
   private async awaitReply(
     client: OpencodeClient,
@@ -318,17 +323,17 @@ export class OpencodeProvider implements LlmProvider {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const messages = await client.readMessages(sessionID).catch(() => [] as OpencodeMessage[]);
-      let text = "";
-      let finished = false;
       for (const message of messages) {
         if (message.type !== "assistant") continue;
         if (!message.finish) continue; // still streaming
-        finished = true;
-        for (const block of message.content ?? []) {
-          if (block.type === "text") text += block.text;
+        const text = assistantText(message);
+        if (message.error || message.finish === "error") {
+          throw new Error(`opencode run failed: ${describeRunError(message)}`);
         }
+        if (text) return text;
+        // Finished cleanly but produced nothing: waiting longer cannot help.
+        throw new Error(`opencode run finished without any text (finish: ${message.finish})`);
       }
-      if (finished && text) return text;
       if (Date.now() >= deadline) {
         onTimeout();
         throw new Error(`opencode run timed out after ${timeoutMs}ms`);
@@ -462,6 +467,29 @@ export function buildPromptText(opts: LlmRunOptions): string {
   }
   sections.push(opts.prompt);
   return sections.join("\n\n");
+}
+
+/** Concatenated text blocks of one assistant message. */
+function assistantText(message: OpencodeMessage): string {
+  let text = "";
+  for (const block of message.content ?? []) {
+    if (block.type === "text") text += block.text;
+  }
+  return text;
+}
+
+/** Renders a failed turn's error detail into one readable line. */
+function describeRunError(message: OpencodeMessage): string {
+  const err = message.error;
+  if (typeof err === "string" && err.trim()) return err.trim();
+  if (err && typeof err === "object") {
+    const where = [err.type, err.status ? `HTTP ${err.status}` : ""].filter(Boolean).join(", ");
+    const detail = err.message?.trim();
+    if (where && detail) return `${where}: ${detail}`;
+    if (detail) return detail;
+    if (where) return `turn failed (${where})`;
+  }
+  return `turn failed (finish: ${message.finish ?? "unknown"})`;
 }
 
 /** Scratch directory for opencode sessions, kept out of the user's projects. */

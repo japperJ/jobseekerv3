@@ -26,12 +26,24 @@ export interface OpencodeTextPart {
   text: string;
 }
 
+/**
+ * Failure detail attached to an assistant message whose turn ended in error
+ * (e.g. `provider.auth` when the provider credential is expired).
+ */
+export interface OpencodeRunError {
+  type?: string;
+  message?: string;
+  status?: number;
+}
+
 export interface OpencodeMessage {
   type: string;
   id?: string;
   /** Set on assistant messages once the turn has finished. */
   finish?: string;
   content?: OpencodeTextPart[];
+  /** Present when the turn finished unsuccessfully. */
+  error?: OpencodeRunError | string;
   data?: { sessionID?: string; delta?: string };
 }
 
