@@ -32,6 +32,21 @@
         <p class="model-help">Used for new AI requests.</p>
       </section>
 
+      <section class="panel" id="opencodeKeyPanel">
+        <h2>OpenCode API key</h2>
+        <p class="key-status-line">
+          <span class="status-dot" id="keyStatusDot"></span>
+          <span id="keyStatusText">Loading…</span>
+        </p>
+        <input type="password" id="opencodeKeyInput" class="key-input" placeholder="Paste API key…" autocomplete="off" spellcheck="false" />
+        <div class="key-actions">
+          <button class="btn btn-primary btn-small" id="keySaveBtn">Save</button>
+          <button class="btn btn-ghost btn-small" id="keyTestBtn">Test</button>
+          <button class="btn btn-ghost btn-small key-delete" id="keyDeleteBtn">Delete</button>
+        </div>
+        <p class="model-help" id="keyHelp">Stored by opencode itself; never saved in this app.</p>
+      </section>
+
       <button class="btn btn-ghost" id="resetBtn">↺ New application</button>
 
       <section class="panel">

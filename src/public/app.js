@@ -17,6 +17,13 @@
   const knowledgeList = document.getElementById("knowledgeList");
   const promptList = document.getElementById("promptList");
   const appList = document.getElementById("appList");
+  const keyStatusDot = document.getElementById("keyStatusDot");
+  const keyStatusText = document.getElementById("keyStatusText");
+  const keyInput = document.getElementById("opencodeKeyInput");
+  const keySaveBtn = document.getElementById("keySaveBtn");
+  const keyTestBtn = document.getElementById("keyTestBtn");
+  const keyDeleteBtn = document.getElementById("keyDeleteBtn");
+  const keyHelp = document.getElementById("keyHelp");
   const themeToggle = document.getElementById("themeToggle");
 
   let busy = false;
@@ -823,12 +830,111 @@
     }
   }
 
+  // ── OpenCode API key ────────────────────────────────────
+  const KEY_DEFAULT_HELP = "Stored by opencode itself; never saved in this app.";
+
+  function renderKeyStatus(data) {
+    const labels = {
+      valid: ["on", "Key is valid"],
+      expired: ["busy", "Key rejected"],
+      untested: ["busy", "Key saved — not tested yet"],
+      missing: ["", "No key stored"],
+    };
+    const [dotClass, label] = labels[data.status] || ["", data.status || "unknown"];
+    keyStatusDot.className = `status-dot key-${data.status || "missing"} ${dotClass}`;
+    keyStatusText.textContent = data.masked ? `${label} · key ${data.masked}` : label;
+    keyInput.placeholder = data.present ? "Enter a new key to replace the stored one" : "Paste API key…";
+    keyDeleteBtn.disabled = !data.present;
+    keyTestBtn.disabled = !data.present;
+    keyHelp.textContent = data.lastError || data.verifyError || KEY_DEFAULT_HELP;
+    keyHelp.classList.toggle("key-error", Boolean(data.lastError || data.verifyError));
+  }
+
+  async function loadKeyStatus() {
+    try {
+      const res = await fetch("/api/settings/opencode-key");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "unavailable");
+      renderKeyStatus(data);
+    } catch {
+      keyStatusText.textContent = "unavailable";
+    }
+  }
+
+  function setKeyBusy(busy, label) {
+    [keySaveBtn, keyTestBtn, keyDeleteBtn].forEach((b) => { b.disabled = busy; });
+    keyTestBtn.textContent = label || "Test";
+  }
+
+  keySaveBtn.addEventListener("click", async () => {
+    const key = keyInput.value.trim();
+    if (!key) {
+      keyHelp.textContent = "Paste the API key first.";
+      keyHelp.classList.add("key-error");
+      return;
+    }
+    setKeyBusy(true, "Testing…");
+    keyHelp.textContent = "Saving and verifying the key…";
+    try {
+      const res = await fetch("/api/settings/opencode-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save the key");
+      keyInput.value = "";
+      renderKeyStatus(data);
+    } catch (err) {
+      keyHelp.textContent = `Save failed: ${err.message}`;
+      keyHelp.classList.add("key-error");
+    } finally {
+      setKeyBusy(false);
+      loadKeyStatus();
+    }
+  });
+
+  keyTestBtn.addEventListener("click", async () => {
+    setKeyBusy(true, "Testing…");
+    keyHelp.textContent = "Running a test prompt through opencode…";
+    keyHelp.classList.remove("key-error");
+    try {
+      const res = await fetch("/api/settings/opencode-key/verify", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Verification failed");
+    } catch (err) {
+      keyHelp.textContent = `Test failed: ${err.message}`;
+      keyHelp.classList.add("key-error");
+    } finally {
+      setKeyBusy(false);
+      loadKeyStatus();
+    }
+  });
+
+  keyDeleteBtn.addEventListener("click", async () => {
+    if (!confirm("Delete the stored OpenCode API key? opencode models will stop working until a new key is saved.")) return;
+    setKeyBusy(true);
+    try {
+      const res = await fetch("/api/settings/opencode-key", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      keyInput.value = "";
+      renderKeyStatus(data);
+    } catch (err) {
+      keyHelp.textContent = `Delete failed: ${err.message}`;
+      keyHelp.classList.add("key-error");
+    } finally {
+      setKeyBusy(false);
+    }
+  });
+
   // ── Init ────────────────────────────────────────────────
   async function init() {
     loadKnowledge();
     loadPrompts();
     loadApplications();
     loadModels();
+    loadKeyStatus();
     try {
       const res = await fetch("/api/health");
       const data = await res.json();
