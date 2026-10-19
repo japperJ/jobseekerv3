@@ -119,6 +119,7 @@ body {
 .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .status-dot.on { background: var(--good); box-shadow: 0 0 0 3px rgba(18,161,80,.18); }
 .status-dot.busy { background: var(--warn); animation: pulse 1.1s infinite; }
+.status-dot.key-expired { background: var(--bad); box-shadow: 0 0 0 3px rgba(214,69,69,.18); animation: none; }
 @keyframes pulse { 50% { opacity: .35; } }
 
 .panel { border-top: 1px solid var(--border); padding-top: 12px; }

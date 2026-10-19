@@ -31,6 +31,7 @@ import {
   resetPrompt,
   savePrompt,
 } from "./prompt-settings.js";
+import { OpencodeCredentialStore } from "./opencode-credentials.js";
 import type { ClientState, ListingPreview, MatchAssessment, ProfileCoverage } from "./types.js";
 
 const app = express();
@@ -615,6 +616,107 @@ app.post("/api/model", async (req, res) => {
     res.status(400).json({
       error: `Unable to change model: ${err instanceof Error ? err.message : String(err)}`,
     });
+  }
+});
+
+// ── OpenCode Go API key ─────────────────────────────────────────────
+// The key lives in opencode's own credential store (the one behind
+// `opencode auth list`), which is where the spawned server reads provider
+// credentials from. This app never persists it.
+
+const credentialStore = new OpencodeCredentialStore({ bin: config.OPENCODE_BIN });
+
+/** Outcome of the most recent key verification; null until one has run. */
+let lastKeyCheck: { ok: boolean; error?: string } | null = null;
+
+type KeyStatus = "missing" | "untested" | "valid" | "expired";
+
+function keyStatus(present: boolean): KeyStatus {
+  if (!present) return "missing";
+  if (!lastKeyCheck) return "untested";
+  return lastKeyCheck.ok ? "valid" : "expired";
+}
+
+/**
+ * Proves the stored key works by running a minimal prompt on the opencode
+ * provider. A bad key fails fast with the provider's own reason (see
+ * OpencodeProvider.awaitReply), so this is cheap to run on demand.
+ */
+async function verifyOpenCodeGoKey(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const provider = manager.providerFor("opencode/verify");
+    const models = await provider.listModels();
+    const model = models.find((id) => id.startsWith("opencode/opencode-go/")) ?? models[0];
+    if (!model) return { ok: false, error: "opencode reports no models" };
+    await provider.run({
+      model,
+      prompt: "Reply with exactly: OK",
+      timeoutMs: 30_000,
+      label: "verify-opencode-key",
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+app.get("/api/settings/opencode-key", async (_req, res) => {
+  try {
+    const summary = await credentialStore.get();
+    res.json({
+      present: summary.present,
+      masked: summary.masked ?? null,
+      status: keyStatus(summary.present),
+      lastError: lastKeyCheck && !lastKeyCheck.ok ? lastKeyCheck.error : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/api/settings/opencode-key", async (req, res) => {
+  const key = String(req.body?.key ?? "");
+  let summary;
+  try {
+    summary = await credentialStore.set(key);
+  } catch (err) {
+    return res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+  // The new key is unproven until checked; verify it right away so the UI can
+  // show green/red immediately after saving.
+  lastKeyCheck = null;
+  const check = await verifyOpenCodeGoKey();
+  lastKeyCheck = check;
+  res.json({
+    present: summary.present,
+    masked: summary.masked ?? null,
+    status: keyStatus(summary.present),
+    verifyError: check.ok ? null : check.error ?? null,
+  });
+});
+
+app.delete("/api/settings/opencode-key", async (_req, res) => {
+  try {
+    await credentialStore.remove();
+    lastKeyCheck = null;
+    res.json({ present: false, status: "missing" });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.post("/api/settings/opencode-key/verify", async (_req, res) => {
+  try {
+    const summary = await credentialStore.get();
+    if (!summary.present) {
+      lastKeyCheck = null;
+      return res.json({ ok: false, status: "missing", error: "No API key is stored." });
+    }
+    const check = await verifyOpenCodeGoKey();
+    lastKeyCheck = check;
+    res.json({ ok: check.ok, status: keyStatus(true), error: check.error ?? null });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 
